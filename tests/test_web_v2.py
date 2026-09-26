@@ -24,7 +24,8 @@ class WebParity(unittest.TestCase):
         b = dt.datetime.strptime(birth, '%Y-%m-%d %H:%M')
         if b.hour >= 23:
             b = (b + dt.timedelta(days=1)).replace(hour=0)
-        direct = self.calc.calculate(dict(gender=gender, birth_info=convert_to_bazi_info(b), query_info=convert_to_bazi_info(dt.datetime.strptime(query, '%Y-%m-%d %H:%M')), **({'known_shengxiao':known} if known else {})))
+        ordered_known = {key: known[key] for key in actual['validation']['provided_relations']} if known else None
+        direct = self.calc.calculate(dict(gender=gender, birth_info=convert_to_bazi_info(b), query_info=convert_to_bazi_info(dt.datetime.strptime(query, '%Y-%m-%d %H:%M')), **({'known_shengxiao': ordered_known} if known else {})))
         self.assertEqual(actual['result'], json.loads(json.dumps(direct, ensure_ascii=False, default=str)))
         for key in ('cong_num', 'tone_num', 'main_num', 'hex_name', 'moment_cn', 'pn_num'):
             self.assertEqual(actual['result'][key], direct[key], key)
@@ -45,6 +46,14 @@ class WebParity(unittest.TestCase):
         actual = self.check_chart('女', '1990-01-01 23:35', '2025-04-20 10:00', {'母亲':'鼠'})
         self.assertEqual(actual['birth_info']['date_str'], '1990-01-02 00:35')
         self.assertIn('kao_ke_info', actual['result']['keke'])
+
+    def test_zodiac_check_does_not_change_birth_destiny(self):
+        plain = self.check_chart('男', '1991-03-02 08:15', '2025-04-20 10:00')
+        checked = self.check_chart('男', '1991-03-02 08:15', '2025-04-20 10:00', {'父亲': '鼠', '兄弟': '虎'})
+        self.assertEqual(plain['destiny_articles'], checked['destiny_articles'])
+        self.assertEqual(set(checked['validation']['provided_relations']), {'父亲', '兄弟'})
+        self.assertEqual(checked['validation']['used_relation'], checked['validation']['provided_relations'][0])
+        self.assertFalse(checked['validation']['birth_destiny_affected_by_zodiac'])
 
     def test_validation(self):
         response=self.client.post('/api/v1/chart',json={'gender':'男','birth_date':'2030-01-01','birth_time':'12:00','query_date':'2025-01-01','query_time':'12:00'})

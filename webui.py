@@ -49,10 +49,20 @@ def compute_chart(data):
     if not birth_info or not query_info:
         raise ValueError('农历或八字转换失败，请检查日期')
     payload = {'gender': gender, 'birth_info': birth_info, 'query_info': query_info}
-    known = data.get('known_shengxiao') or {}
+    supplied = data.get('known_shengxiao') or {}
+    # The V2 engine reads only the first item. Keep the selection independent of JSON key ordering.
+    known = {key: supplied[key] for key in ('父亲', '母亲', '兄弟', '配偶', '子女') if key in supplied}
     if known:
         payload['known_shengxiao'] = known
     result = init_calculator().calculate(payload)
+    verification = result.get('keke', {}).get('kao_ke_info') or {}
+    validation = {
+        'provided_relations': list(known),
+        'used_relation': verification.get('liuqin_type'),
+        'matches': verification.get('match_count', 0),
+        'birth_destiny_affected_by_zodiac': False,
+        'note': 'V2 仅用第一个已知六亲生肖筛选八刻；本命兄弟条文和秘数表不随生肖考刻改变。',
+    }
     destiny = []
     table = result.get('tbl_data')
     if table:
@@ -66,7 +76,7 @@ def compute_chart(data):
     return json.loads(json.dumps({
         'input_birth': entered_birth, 'input_query': query.strftime('%Y-%m-%d %H:%M'),
         'birth_info': birth_info, 'query_info': query_info, 'gender': gender,
-        'destiny_articles': destiny, 'result': result,
+        'destiny_articles': destiny, 'result': result, 'validation': validation,
     }, ensure_ascii=False, default=str))
 
 
