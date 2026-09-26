@@ -1,9 +1,9 @@
 .git
-.pytest_cache
-__pycache__
+libs/
+output/
+tests/
+__pycache__/
 *.pyc
-.venv
-tests
-output
-README.md
-README_WEB.md
+*.whl
+*.bat
+*.md

@@ -4,6 +4,3 @@ services:
     runtime: docker
     plan: free
     healthCheckPath: /api/v1/health
-    envVars:
-      - key: RATE_LIMIT_PER_MINUTE
-        value: "20"

@@ -3,9 +3,21 @@ import sys
 import csv
 import datetime
 import traceback
-import re
-from pathlib import Path
 import pandas as pd
+from pathlib import Path
+
+from keke_module import (
+    TIAN_GAN_TAI_XUAN, DI_ZHI_TAI_XUAN, DI_ZHI_ORDER,
+    ER_SHI_BA_SU, SU_XIU_PEI_SHU, QI_YUAN_QI_SU,
+    LIU_QIN_TYPE_CODES, SHENG_XIAO_TO_DIZHI, DI_ZHI_TO_SHENG_XIAO,
+    get_tai_xuan, get_jiayun, get_day_su, get_hour_su,
+    calculate_liuqinjishu, get_kefen, kao_ke, zhidu_tiaowen, calculate_keke,
+    calculate_he_luo_peishu, calculate_mima_chazi, calculate_yinyun_baiqie,
+    calculate_liuqin_shengxiao_mifa, calculate_baisui_liunian_peishu, calculate_baisui_liunian_zai_e,
+    calculate_base_number, SECRET_NUMBER_TABLE, calculate_target_number, get_tiaowen_by_topic,
+    calculate_huangji_total, calculate_liuqin_shengxiao_range, calculate_renyuan_shu, calculate_liuqin_ming_shu,
+    calculate_kaoke_qushu, calculate_houtian_yuncheng, calculate_xinyi_brother_count
+)
 
 # 尝试导入 cnlunar
 try:
@@ -47,7 +59,9 @@ def convert_to_bazi_info(dt_obj):
             "lunar_month": lm, "lunar_day": ld, "is_leap": "闰" in a.lunarMonthCn,
             "bazi": {"year": a.year8Char, "month": a.month8Char, "day": a.day8Char, "time": a.twohour8Char},
             "date_str": dt_obj.strftime("%Y-%m-%d %H:%M"),
-            "lunar_str": f"{a.lunarYearCn}年 {a.lunarMonthCn}{a.lunarDayCn}"
+            "lunar_str": f"{a.lunarYearCn}年 {a.lunarMonthCn}{a.lunarDayCn}",
+            "hour": dt_obj.hour,
+            "minute": dt_obj.minute
         }
     except Exception as e:
         print(f"八字转换失败: {e}")
@@ -84,9 +98,7 @@ build_correction_map()
 # ==============================================================================
 class TieBanDataLoader:
     def __init__(self, db_folder=None):
-        if db_folder is None:
-            db_folder = Path(__file__).resolve().parent / "数据库"
-        self.db_folder = db_folder
+        self.db_folder = str(Path(db_folder) if db_folder is not None else Path(__file__).resolve().parent / 'DB')
         self.tables = {} 
         self.rule_tables = []
         
@@ -110,8 +122,8 @@ class TieBanDataLoader:
         self.FORTUNE_DUANYU_MAP = {}    # 条文数字 -> (断语, 对应年龄)
         self.FORTUNE_DUANYU_RAW = []    # 原始断词数据
         
-        print(f">>> 正在加载数据库 ({os.path.abspath(db_folder)})...")
-        if os.path.exists(db_folder):
+        print(f">>> 正在加载数据库 ({os.path.abspath(self.db_folder)})...")
+        if os.path.exists(self.db_folder):
             self._load_all()
         else:
             print("【错误】数据库文件夹不存在！")
@@ -223,44 +235,80 @@ class TieBanDataLoader:
         else:
             print("  [警告] 无法读取 14-9.csv，请检查文件是否存在！")
 
-        # 14-10: 卦象详情。保留原公式与数据，只适配仓库 CSV 的实际列名。
-        destiny_rows = self._read_csv_as_dicts("14-10.csv")
-        if not destiny_rows:
-            raise RuntimeError("14-10.csv 无法读取或数据为空")
-        columns = set(destiny_rows[0])
-        gua_column = "十二辟卦" if "十二辟卦" in columns else "卦名"
-        initial_column = "初刻生人先天命数" if "初刻生人先天命数" in columns else "初刻先天"
-        main_column = "正刻生人先天命数" if "正刻生人先天命数" in columns else "正刻先天"
-        required = {gua_column, initial_column, main_column, "基数", "序数", "性格", "才能前程", "财运", "兄弟个数"}
-        if not required <= columns:
-            raise RuntimeError("14-10.csv 缺少本命条文列：" + "、".join(sorted(required - columns)))
-        for r in destiny_rows:
-            try:
-                gua = r[gua_column]
-                base = int(r['基数'])
-                seq = int(r['序数'])
-                def parse_offsets(s):
-                    # 多个条文偏移量在实际 CSV 中以单元格内换行分隔；× 表示无条文。
-                    return [int(x) for x in re.split(r'[\s|,，、]+', str(s)) if x.isdigit()]
-                offsets = {
-                    "性格": parse_offsets(r['性格']),
-                    "才能前程": parse_offsets(r['才能前程']),
-                    "财运": parse_offsets(r['财运']),
-                    "兄弟个数": parse_offsets(r['兄弟个数'])
-                }
-                data_pack = {"base": base, "seq": seq, "offsets": offsets}
+        # 14-10: 卦象详情
+        df_14_10 = self._read_csv_robust("14-10.csv", header_option=0)
+        if df_14_10 is not None and not df_14_10.empty:
+            print(f"  > 加载 14-10.csv 成功，共 {len(df_14_10)} 条数据")
+            
+            columns = [self._clean_key(col) for col in df_14_10.columns]
+            print(f"    14-10.csv 列名: {columns}")
+            
+            col_map = {}
+            for idx, col in enumerate(columns):
+                if '辟卦' in col or '卦名' in col:
+                    col_map['gua'] = idx
+                elif '基数' in col:
+                    col_map['base'] = idx
+                elif '初刻' in col:
+                    col_map['initial'] = idx
+                elif '正刻' in col:
+                    col_map['main'] = idx
+                elif '序数' in col:
+                    col_map['seq'] = idx
+                elif '性格' in col:
+                    col_map['xingge'] = idx
+                elif '才能' in col:
+                    col_map['caineng'] = idx
+                elif '财运' in col:
+                    col_map['caiyun'] = idx
+                elif '兄弟' in col:
+                    col_map['xiongdi'] = idx
+            
+            required_cols = ['gua', 'base', 'initial', 'main', 'seq', 'xingge', 'caineng', 'caiyun', 'xiongdi']
+            missing_cols = [col for col in required_cols if col not in col_map]
+            if missing_cols:
+                print(f"    [警告] 14-10.csv 缺少必要列: {missing_cols}")
+            else:
+                valid_count = 0
+                for idx, row in df_14_10.iterrows():
+                    try:
+                        gua = self._clean_key(row.iloc[col_map['gua']])
+                        base = int(float(row.iloc[col_map['base']]))
+                        seq = int(float(row.iloc[col_map['seq']]))
+                        
+                        def parse_offsets(s):
+                            return [int(x) for x in str(s).replace('，','|').replace('\n','|').split('|') if x.strip().isdigit()]
+                        
+                        offsets = {
+                            "性格": parse_offsets(row.iloc[col_map['xingge']]),
+                            "才能前程": parse_offsets(row.iloc[col_map['caineng']]),
+                            "财运": parse_offsets(row.iloc[col_map['caiyun']]),
+                            "兄弟个数": parse_offsets(row.iloc[col_map['xiongdi']])
+                        }
+                        
+                        data_pack = {"base": base, "seq": seq, "offsets": offsets}
+                        
+                        initial_nums = str(row.iloc[col_map['initial']]).split('|')
+                        for n in initial_nums:
+                            if n.strip().isdigit():
+                                self.DESTINY_DATA[(gua, "Initial", int(n.strip()))] = data_pack
+                        
+                        main_nums = str(row.iloc[col_map['main']]).split('|')
+                        for n in main_nums:
+                            if n.strip().isdigit():
+                                self.DESTINY_DATA[(gua, "Main", int(n.strip()))] = data_pack
+                        
+                        valid_count += 1
+                        
+                    except Exception as e:
+                        continue
                 
-                # 初刻
-                if r.get(initial_column):
-                    for n in str(r[initial_column]).split('|'):
-                        if n.strip().isdigit():
-                            self.DESTINY_DATA[(gua, "Initial", int(n))] = data_pack
-                # 正刻
-                if r.get(main_column):
-                    for n in str(r[main_column]).split('|'):
-                        if n.strip().isdigit():
-                            self.DESTINY_DATA[(gua, "Main", int(n))] = data_pack
-            except Exception: pass
+                print(f"    成功加载 {valid_count} 条本命条文数据")
+                print(f"    成功解析 {len(self.DESTINY_DATA)} 条本命映射")
+                if len(self.DESTINY_DATA) > 0:
+                    print(f"    示例映射: {list(self.DESTINY_DATA.keys())[:5]}")
+        else:
+            print("  [警告] 无法读取 14-10.csv，请检查文件是否存在！")
             
         # 3. 流年相关 (14-11 ~ 14-14)
         for r in self._read_csv_as_dicts("14-11-1.csv"):
@@ -333,11 +381,11 @@ class TieBanDataLoader:
                 # 读取数据
                 for idx, row in df_14_14.iterrows():
                     try:
-                        letter = self._clean_key(row[col_mapping['letter']])
-                        age = int(float(row[col_mapping['age']]))
-                        base = int(float(row[col_mapping['base']]))
-                        add = int(float(row[col_mapping['add']]))
-                        correction = int(float(row[col_mapping['correction']]))
+                        letter = self._clean_key(row.iloc[col_mapping['letter']])
+                        age = int(float(row.iloc[col_mapping['age']]))
+                        base = int(float(row.iloc[col_mapping['base']]))
+                        add = int(float(row.iloc[col_mapping['add']]))
+                        correction = int(float(row.iloc[col_mapping['correction']]))
                         
                         if letter and age > 0:
                             # 主映射：(字母, 岁数) -> (基数, 加数, 条文校正数)
@@ -354,8 +402,8 @@ class TieBanDataLoader:
         else:
             print("  [警告] 无法读取 14-14.csv，请检查文件是否存在！")
         
-        # 新增：加载铁板神数-条文断词.csv
-        duanyu_file = "铁板神数-条文断词.csv"
+        # 新增：加载铁板神数-条文断词.csv (DB目录下的List.csv)
+        duanyu_file = "List.csv"
         df_duanyu = self._read_csv_robust(duanyu_file, header_option=0)
         if df_duanyu is not None and not df_duanyu.empty:
             print(f"  > 加载 {duanyu_file} 成功，共 {len(df_duanyu)} 条数据")
@@ -380,7 +428,7 @@ class TieBanDataLoader:
                 try:
                     # 获取条文数字
                     if 'num' in col_mapping:
-                        fortune_num = row[col_mapping['num']]
+                        fortune_num = row.iloc[col_mapping['num']]
                         if self._is_numeric(fortune_num):
                             fortune_num = int(float(fortune_num))
                         else:
@@ -391,12 +439,12 @@ class TieBanDataLoader:
                     # 获取断语
                     duanyu = ""
                     if 'duanyu' in col_mapping:
-                        duanyu = self._clean_key(row[col_mapping['duanyu']])
+                        duanyu = self._clean_key(row.iloc[col_mapping['duanyu']])
                     
                     # 获取对应年龄
                     duanyu_age = ""
                     if 'age' in col_mapping:
-                        duanyu_age = self._clean_key(row[col_mapping['age']])
+                        duanyu_age = self._clean_key(row.iloc[col_mapping['age']])
                     
                     # 构建映射
                     if fortune_num > 0:
@@ -417,13 +465,79 @@ class TieBanDataLoader:
                 print(f"    示例数据: {list(self.FORTUNE_DUANYU_MAP.items())[:5]}")
         else:
             print(f"  [警告] 无法读取 {duanyu_file}，断语功能将不可用！")
+        
+        # 加载秘数表
+        secret_file = "秘数表.csv"
+        df_secret = self._read_csv_robust(secret_file, header_option=0)
+        if df_secret is not None and not df_secret.empty:
+            print(f"  > 加载 {secret_file} 成功，共 {len(df_secret)} 条数据")
+            
+            self.SECRET_NUMBER_TABLE = {}
+            for idx, row in df_secret.iterrows():
+                try:
+                    topic = self._clean_key(row.get('事项', ''))
+                    secret_num = int(float(row.get('秘数', 0)))
+                    if topic:
+                        self.SECRET_NUMBER_TABLE[topic] = secret_num
+                except Exception as e:
+                    continue
+            
+            print(f"    成功加载 {len(self.SECRET_NUMBER_TABLE)} 条秘数数据: {self.SECRET_NUMBER_TABLE}")
+        else:
+            print(f"  [提示] 未找到 {secret_file}，使用默认秘数表")
+            self.SECRET_NUMBER_TABLE = {
+                "流年": 0,
+                "社交": 10,
+                "家庭": 30,
+                "运势": 50,
+                "财运": 80,
+                "本命": 120
+            }
+        
+        baijia_file = "chinese_surnames.csv"
+        self.BAIJIA_XING = {"木": [], "火": [], "土": [], "金": [], "水": []}
+        df_baijia = self._read_csv_robust(baijia_file, header_option=0)
+        if df_baijia is not None and not df_baijia.empty:
+            print(f"  > 加载 {baijia_file} 成功，共 {len(df_baijia)} 条数据")
+            for idx, row in df_baijia.iterrows():
+                try:
+                    xing = str(row.get('surname', '')).strip()
+                    wuxing = str(row.get('wuxing', '')).strip()
+                    if xing and wuxing in self.BAIJIA_XING:
+                        self.BAIJIA_XING[wuxing].append(xing)
+                except Exception as e:
+                    continue
+            for wx, xing_list in self.BAIJIA_XING.items():
+                self.BAIJIA_XING[wx] = list(set(xing_list))
+            print(f"    成功加载百家姓数据: 木{len(self.BAIJIA_XING['木'])}火{len(self.BAIJIA_XING['火'])}土{len(self.BAIJIA_XING['土'])}金{len(self.BAIJIA_XING['金'])}水{len(self.BAIJIA_XING['水'])}")
+        else:
+            print(f"  [提示] 未找到 {baijia_file}")
+        
+        common_names_file = "common_names.csv"
+        self.COMMON_NAMES = {"木": [], "火": [], "土": [], "金": [], "水": []}
+        df_names = self._read_csv_robust(common_names_file, header_option=0)
+        if df_names is not None and not df_names.empty:
+            print(f"  > 加载 {common_names_file} 成功，共 {len(df_names)} 条数据")
+            for idx, row in df_names.iterrows():
+                try:
+                    hanzi = str(row.get('character', '')).strip()
+                    wuxing = str(row.get('wuxing', '')).strip()
+                    if hanzi and wuxing in self.COMMON_NAMES:
+                        self.COMMON_NAMES[wuxing].append(hanzi)
+                except Exception as e:
+                    continue
+            for wx, ming_list in self.COMMON_NAMES.items():
+                self.COMMON_NAMES[wx] = list(set(ming_list))
+            print(f"    成功加载常用名字数据: 木{len(self.COMMON_NAMES['木'])}火{len(self.COMMON_NAMES['火'])}土{len(self.COMMON_NAMES['土'])}金{len(self.COMMON_NAMES['金'])}水{len(self.COMMON_NAMES['水'])}")
+        else:
+            print(f"  [提示] 未找到 {common_names_file}")
 
 # ==============================================================================
 # 3. Calculator
 # ==============================================================================
 class TieBanCalculator:
-    def __init__(self, loader=None):
-        self.loader = loader if loader is not None else TieBanDataLoader()
+    def __init__(self):
+        self.loader = TieBanDataLoader()
         self.db = self.loader
         self.tiangan = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"]
         self.dizhi = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"]
@@ -510,7 +624,7 @@ class TieBanCalculator:
         month_val = self.db.tables['14-1'].get(calc_month, int(calc_month))
         time_val = self.db.tables['14-2'].get(t_zhi, 0)
         cong_num = month_val + 3 - time_val
-        if cong_num <= 0: cong_num += 12
+        cong_num = ((cong_num - 1) % 12) + 1
         details['cong_calc'] = f"先天命数 = {cong_num}"
         details['cong_num'] = cong_num
 
@@ -531,21 +645,30 @@ class TieBanCalculator:
         sum_val = day_life + time_luck
         is_yang = self.is_yang_year(y_gan)
         grp = "阳男阴女" if (gender == "男" and is_yang) or (gender == "女" and not is_yang) else "阴男阳女"
-        cond = ">6" if sum_val > 6 else "<=6"
-        moment = "Main"
-        for r in self.db.rule_tables:
-            if r['组别'] == grp and r['和值条件'] == cond:
-                moment = "Initial" if r['刻别'] == "初刻" else "Main"
-                break
-        moment_cn = "初刻" if moment == "Initial" else "正刻"
-        details['moment_calc'] = f"考刻: {moment_cn} ({grp})"
+        
+        if (gender == "男" and is_yang) or (gender == "女" and not is_yang):
+            if sum_val > 6:
+                moment_cn = "初刻"
+            else:
+                moment_cn = "正刻"
+        else:
+            if sum_val > 6:
+                moment_cn = "正刻"
+            else:
+                moment_cn = "初刻"
+        
+        moment = "Initial" if moment_cn == "初刻" else "Main"
+        details['moment_calc'] = f"考刻: {moment_cn} (日命数:{day_life},时运数:{time_luck},和:{sum_val},性别:{gender},年干:{y_gan}{'阳' if is_yang else '阴'},{grp})"
         details['moment_cn'] = moment_cn
 
         # Step 5: 计算本命数
-        base_val = tone_num * 5 + day_life + time_luck
-        fact = (base_val - 1) if sum_val <= 6 else (base_val - 6)
-        main_num = fact * 30 + birth['lunar_day']
-        details['main_calc'] = f"本命数: {main_num}"
+        sum_val = day_life + time_luck
+        if sum_val <= 6:
+            main_num = (tone_num * 5 + day_life + time_luck - 1) * 30 + birth['lunar_day']
+            details['main_calc'] = f"本命数=(五音命数×5+日命数+时运数-1)×30+农历出生日=({tone_num}×5+{day_life}+{time_luck}-1)×30+{birth['lunar_day']}={main_num}"
+        else:
+            main_num = (tone_num * 5 + day_life + time_luck - 6) * 30 + birth['lunar_day']
+            details['main_calc'] = f"本命数=(五音命数×5+日命数+时运数-6)×30+农历出生日=({tone_num}×5+{day_life}+{time_luck}-6)×30+{birth['lunar_day']}={main_num}"
         details['main_num'] = main_num
 
         # Step 6: 查找卦名
@@ -568,20 +691,14 @@ class TieBanCalculator:
         # Step 8: 计算流年条文（核心修改）
         liunian = []
         try:
-            bg, sg = self.get_liunian_groups(y_gan, y_zhi)
-            start = 0
-            for k in [(cong_num, bg, gender), ('generic', bg, gender)]:
-                if k in self.db.LIUNIAN_START:
-                    start = self.db.LIUNIAN_START[k]; break
             raw_seq = []
             final_seq = ["?"] * 12
-            if start != 0:
-                for k in [(cong_num, y_gan), (cong_num, sg)]:
-                    if k in self.db.LIUNIAN_SEQ:
-                        raw_seq = self.db.LIUNIAN_SEQ[k]; break
-                if raw_seq and len(raw_seq) >= 12:
-                    off = (13 - start) % 12
-                    final_seq = [raw_seq[(i + off) % 12] for i in range(12)]
+            bg, sg = self.get_liunian_groups(y_gan, y_zhi)
+            for k in [(cong_num, y_gan), (cong_num, sg)]:
+                if k in self.db.LIUNIAN_SEQ:
+                    raw_seq = self.db.LIUNIAN_SEQ[k]; break
+            if raw_seq and len(raw_seq) >= 12:
+                final_seq = raw_seq[:12]
 
             tg_list = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"]
             dz_list = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"]
@@ -655,6 +772,56 @@ class TieBanCalculator:
             pass
             
         details['liunian'] = liunian
+        
+        keke_result = calculate_keke(birth, query, self.db.FORTUNE_DUANYU_MAP, self.db)
+        if keke_result:
+            details['keke'] = keke_result
+            
+            known_shengxiao = payload.get('known_shengxiao', {})
+            if known_shengxiao:
+                k_true, ba_ke_results, kao_ke_info = kao_ke(keke_result['liuqinjishu'], known_shengxiao, self.db)
+                if k_true:
+                    details['keke']['k_true'] = k_true
+                    details['keke']['ba_ke_results'] = ba_ke_results
+                    details['keke']['kao_ke_info'] = kao_ke_info
+                    details['keke']['tiaowen'] = zhidu_tiaowen(keke_result['liuqinjishu'], k_true, self.db)
+        
+        bazi = birth['bazi']
+        details['keke'] = details.get('keke', {})
+        
+        details['keke']['he_luo_peishu'] = calculate_he_luo_peishu(bazi)
+        details['keke']['yinyun_baiqie'] = calculate_yinyun_baiqie(bazi)
+        details['keke']['liuqin_shengxiao_mifa'] = calculate_liuqin_shengxiao_mifa(bazi)
+        details['keke']['baisui_liunian_peishu'] = calculate_baisui_liunian_peishu(bazi)
+        details['keke']['baisui_liunian_zai_e'] = calculate_baisui_liunian_zai_e(bazi)
+        
+        details['keke']['base_number'] = calculate_base_number(bazi)
+        
+        core = details['keke']['base_number']['base']
+        details['keke']['core_number'] = core
+        
+        secret_table = self.db.SECRET_NUMBER_TABLE
+        details['keke']['secret_number_table'] = secret_table
+        
+        tiaowen_by_topic = {}
+        for topic in secret_table:
+            tiaowen_by_topic[topic] = get_tiaowen_by_topic(core, topic, self.db.FORTUNE_DUANYU_MAP, secret_table)
+        details['keke']['tiaowen_by_topic'] = tiaowen_by_topic
+        
+        details['keke']['huangji_total'] = calculate_huangji_total(bazi)
+        
+        details['keke']['liuqin_shengxiao_range'] = calculate_liuqin_shengxiao_range(bazi)
+        
+        details['keke']['renyuan_shu'] = calculate_renyuan_shu(cong_num, y_gan)
+        
+        details['keke']['liuqin_ming_shu'] = calculate_liuqin_ming_shu(cong_num)
+        
+        details['keke']['kaoke_qushu'] = calculate_kaoke_qushu(bazi, gender, self.db)
+        
+        details['keke']['houtian_yuncheng'] = calculate_houtian_yuncheng(bazi, self.db)
+        
+        details['keke']['xinyi_brother_count'] = calculate_xinyi_brother_count(bazi, self.db)
+        
         return details
 
     def print_report(self, res):

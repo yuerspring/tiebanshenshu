@@ -1,11 +1,12 @@
 FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PORT=8000
-WORKDIR /srv/tiebanshenshu
+WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt && useradd -r -u 10001 appuser
-COPY main.py ./
-COPY app/ ./app/
-COPY 数据库/ ./数据库/
+COPY main.py keke_module.py webui.py ./
+COPY DB/ ./DB/
+COPY templates/ ./templates/
+COPY static/ ./static/
 USER appuser
 EXPOSE 8000
-CMD ["sh", "-c", "exec uvicorn app.server:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers"]
+CMD ["sh", "-c", "exec gunicorn -w 2 -b 0.0.0.0:${PORT:-8000} --timeout 90 webui:app"]
