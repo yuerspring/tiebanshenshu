@@ -3,6 +3,8 @@ import sys
 import csv
 import datetime
 import traceback
+import re
+from pathlib import Path
 import pandas as pd
 
 # 尝试导入 cnlunar
@@ -81,7 +83,9 @@ build_correction_map()
 # 2. 数据加载器
 # ==============================================================================
 class TieBanDataLoader:
-    def __init__(self, db_folder="./数据库"):
+    def __init__(self, db_folder=None):
+        if db_folder is None:
+            db_folder = Path(__file__).resolve().parent / "数据库"
         self.db_folder = db_folder
         self.tables = {} 
         self.rule_tables = []
@@ -219,14 +223,25 @@ class TieBanDataLoader:
         else:
             print("  [警告] 无法读取 14-9.csv，请检查文件是否存在！")
 
-        # 14-10: 卦象详情
-        for r in self._read_csv_as_dicts("14-10.csv"):
+        # 14-10: 卦象详情。保留原公式与数据，只适配仓库 CSV 的实际列名。
+        destiny_rows = self._read_csv_as_dicts("14-10.csv")
+        if not destiny_rows:
+            raise RuntimeError("14-10.csv 无法读取或数据为空")
+        columns = set(destiny_rows[0])
+        gua_column = "十二辟卦" if "十二辟卦" in columns else "卦名"
+        initial_column = "初刻生人先天命数" if "初刻生人先天命数" in columns else "初刻先天"
+        main_column = "正刻生人先天命数" if "正刻生人先天命数" in columns else "正刻先天"
+        required = {gua_column, initial_column, main_column, "基数", "序数", "性格", "才能前程", "财运", "兄弟个数"}
+        if not required <= columns:
+            raise RuntimeError("14-10.csv 缺少本命条文列：" + "、".join(sorted(required - columns)))
+        for r in destiny_rows:
             try:
-                gua = r['卦名']
+                gua = r[gua_column]
                 base = int(r['基数'])
                 seq = int(r['序数'])
-                def parse_offsets(s): 
-                    return [int(x) for x in str(s).replace('，','|').split('|') if x.strip().isdigit()]
+                def parse_offsets(s):
+                    # 多个条文偏移量在实际 CSV 中以单元格内换行分隔；× 表示无条文。
+                    return [int(x) for x in re.split(r'[\s|,，、]+', str(s)) if x.isdigit()]
                 offsets = {
                     "性格": parse_offsets(r['性格']),
                     "才能前程": parse_offsets(r['才能前程']),
@@ -236,14 +251,13 @@ class TieBanDataLoader:
                 data_pack = {"base": base, "seq": seq, "offsets": offsets}
                 
                 # 初刻
-                if r.get('初刻先天'):
-                    for n in str(r['初刻先天']).split('|'):
+                if r.get(initial_column):
+                    for n in str(r[initial_column]).split('|'):
                         if n.strip().isdigit():
                             self.DESTINY_DATA[(gua, "Initial", int(n))] = data_pack
                 # 正刻
-                key_main = '正刻先天' if '正刻先天' in r else '正刻'
-                if r.get(key_main):
-                    for n in str(r[key_main]).split('|'):
+                if r.get(main_column):
+                    for n in str(r[main_column]).split('|'):
                         if n.strip().isdigit():
                             self.DESTINY_DATA[(gua, "Main", int(n))] = data_pack
             except Exception: pass
@@ -408,8 +422,8 @@ class TieBanDataLoader:
 # 3. Calculator
 # ==============================================================================
 class TieBanCalculator:
-    def __init__(self):
-        self.loader = TieBanDataLoader()
+    def __init__(self, loader=None):
+        self.loader = loader if loader is not None else TieBanDataLoader()
         self.db = self.loader
         self.tiangan = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"]
         self.dizhi = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"]
