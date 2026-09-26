@@ -6,6 +6,7 @@ import os
 import traceback
 from flask import Flask, jsonify, render_template, request
 from main import TieBanCalculator, convert_to_bazi_info
+from reference_adapter import compare_with_os
 
 app = Flask(__name__)
 app.config['JSON_AS_ASCII'] = False
@@ -172,6 +173,27 @@ def api_time_sensitivity():
     except Exception:
         logger.error('V2 sensitivity calculation failed\n%s', traceback.format_exc())
         return error('CALCULATION_FAILED', '时刻比较失败，请检查输入后重试', 500)
+
+
+@app.post('/api/v1/compare-os')
+def api_compare_os():
+    """Compare two entire engines without overwriting either source version."""
+    if request.content_length and request.content_length > 4096:
+        return error('INVALID_INPUT', '输入内容过长', 413)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or data.get('gender') not in ('男', '女'):
+        return error('INVALID_INPUT', '请选择性别并填写日期时间')
+    known = data.get('known_shengxiao') or {}
+    if not isinstance(known, dict) or any(k not in KIN or v not in ANIMALS for k, v in known.items()):
+        return error('INVALID_INPUT', '考刻验证生肖填写有误')
+    try:
+        current = compute_chart(data)
+        return jsonify({'success': True, 'data': compare_with_os(data, current)})
+    except ValueError as exc:
+        return error('INVALID_DATETIME', str(exc))
+    except Exception:
+        logger.error('OS reference comparison failed\n%s', traceback.format_exc())
+        return error('CALCULATION_FAILED', '参考版对照失败，请检查输入后重试', 500)
 
 
 if __name__ == '__main__':

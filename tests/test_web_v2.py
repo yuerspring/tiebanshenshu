@@ -5,6 +5,7 @@ import json
 import unittest
 from main import convert_to_bazi_info
 from webui import app, init_calculator
+from reference_adapter import reference_calculator
 
 
 class WebParity(unittest.TestCase):
@@ -84,6 +85,26 @@ class WebParity(unittest.TestCase):
             'query_date': '2025-01-01', 'query_time': '12:00'})
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json['error']['code'], 'INVALID_DATETIME')
+
+    def test_os_reference_is_original_calculator_with_its_own_database(self):
+        sample = {'gender': '男', 'birth_date': '1991-03-02', 'birth_time': '08:30',
+                  'query_date': '2025-04-20', 'query_time': '10:00'}
+        with contextlib.redirect_stdout(io.StringIO()):
+            response = self.client.post('/api/v1/compare-os', json=sample)
+        self.assertEqual(response.status_code, 200, response.json)
+        comparison = response.json['data']
+        source, calc = reference_calculator()
+        raw = calc.calculate({'gender': '男',
+                              'birth_info': source.convert_to_bazi_info(dt.datetime(1991, 3, 2, 8, 30)),
+                              'query_info': source.convert_to_bazi_info(dt.datetime(2025, 4, 20, 10))})
+        self.assertEqual(comparison['reference']['original_result'],
+                         json.loads(json.dumps(raw, ensure_ascii=False, default=str)))
+        self.assertEqual(comparison['reference']['final_fortune_num'],
+                         raw['main_num'] + raw['ke_gan_num'] * 48)
+        self.assertEqual(len(comparison['reference']['annual_fortunes']), 108)
+        self.assertEqual(source.get_eight_ke_from_time(dt.datetime(1991, 3, 2, 5, 30)), '六刻')
+        self.assertEqual(self.client.post('/api/v1/compare-os', json={
+            **sample, 'birth_date': '2030-01-01'}).status_code, 400)
 
 
 if __name__ == '__main__':
