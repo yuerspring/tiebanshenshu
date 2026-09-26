@@ -61,6 +61,30 @@ class WebParity(unittest.TestCase):
         self.assertEqual(response.json['error']['code'],'INVALID_DATETIME')
         self.assertTrue(self.client.get('/api/v1/health').json['database_loaded'])
 
+    def test_hour_sensitivity_runs_original_calculator_for_each_quarter(self):
+        sample = {'gender': '男', 'birth_date': '1991-03-02', 'birth_time': '08:30',
+                  'query_date': '2025-04-20', 'query_time': '10:00'}
+        response = self.client.post('/api/v1/time-sensitivity', json=sample)
+        self.assertEqual(response.status_code, 200, response.json)
+        comparison = response.json['data']
+        self.assertEqual(comparison['minimum_time_resolution_minutes'], 15)
+        self.assertEqual([c['time_range'] for c in comparison['candidates']],
+                         ['08:00–08:14', '08:15–08:29', '08:30–08:44', '08:45–08:59'])
+        for minute, row in zip((0, 15, 30, 45), comparison['candidates']):
+            sample['birth_time'] = f'08:{minute:02d}'
+            chart = self.client.post('/api/v1/chart', json=sample).json['data']
+            self.assertEqual(row['main_num'], chart['result']['main_num'])
+            self.assertEqual(row['brother_articles'], [a for a in chart['destiny_articles'] if '兄弟' in a['topic']])
+            self.assertEqual(row['k_initial'], chart['result']['keke']['k_initial'])
+        self.assertTrue(comparison['brother_articles_unchanged'])
+
+    def test_hour_sensitivity_rejects_invalid_birth(self):
+        response = self.client.post('/api/v1/time-sensitivity', json={
+            'gender': '男', 'birth_date': '2030-01-01', 'birth_time': '12:30',
+            'query_date': '2025-01-01', 'query_time': '12:00'})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json['error']['code'], 'INVALID_DATETIME')
+
 
 if __name__ == '__main__':
     unittest.main()

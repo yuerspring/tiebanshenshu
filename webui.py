@@ -80,6 +80,43 @@ def compute_chart(data):
     }, ensure_ascii=False, default=str))
 
 
+def compare_birth_hour(data):
+    """Run the unchanged V2 engine at each quarter of the entered birth hour.
+
+    This is a sensitivity check, not an inverse calculator or a claim of
+    minute-level precision. Never select a 'correct' birth minute from a tie.
+    """
+    birth = input_datetime(data, 'birth')
+    candidates = []
+    for minute in (0, 15, 30, 45):
+        candidate = dict(data, birth_time=f'{birth.hour:02d}:{minute:02d}')
+        chart = compute_chart(candidate)
+        result = chart['result']
+        keke = result.get('keke') or {}
+        brother = [article for article in chart['destiny_articles'] if '兄弟' in article['topic']]
+        candidates.append({
+            'time_range': f'{birth.hour:02d}:{minute:02d}–{birth.hour:02d}:{minute+14:02d}',
+            'main_num': result.get('main_num'),
+            'moment_cn': result.get('moment_cn'),
+            'hex_name': result.get('hex_name'),
+            'k_initial': keke.get('k_initial'),
+            'k_true': keke.get('k_true'),
+            'zodiac_matches': chart['validation']['matches'],
+            'brother_articles': brother,
+            'destiny_articles': chart['destiny_articles'],
+        })
+    def unchanged(field):
+        return all(row[field] == candidates[0][field] for row in candidates[1:])
+    return {
+        'hour': f'{birth.hour:02d}:00–{birth.hour:02d}:59',
+        'candidates': candidates,
+        'brother_articles_unchanged': unchanged('brother_articles'),
+        'destiny_articles_unchanged': unchanged('destiny_articles'),
+        'minimum_time_resolution_minutes': 15,
+        'note': '逐段调用原 V2 算法；候选段内的每一分钟不能由该算法区分。生肖无匹配时，默认刻数不代表考刻成功。',
+    }
+
+
 @app.after_request
 def response_headers(response):
     response.headers['X-Content-Type-Options'] = 'nosniff'
@@ -116,6 +153,25 @@ def api_calculate():
     except Exception:
         logger.error('V2 calculation failed\n%s', traceback.format_exc())
         return error('CALCULATION_FAILED', '计算失败，请检查输入后重试', 500)
+
+
+@app.post('/api/v1/time-sensitivity')
+def api_time_sensitivity():
+    if request.content_length and request.content_length > 4096:
+        return error('INVALID_INPUT', '输入内容过长', 413)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or data.get('gender') not in ('男', '女'):
+        return error('INVALID_INPUT', '请选择性别并填写日期时间')
+    known = data.get('known_shengxiao') or {}
+    if not isinstance(known, dict) or any(k not in KIN or v not in ANIMALS for k, v in known.items()):
+        return error('INVALID_INPUT', '考刻验证生肖填写有误')
+    try:
+        return jsonify({'success': True, 'data': compare_birth_hour(data)})
+    except ValueError as exc:
+        return error('INVALID_DATETIME', str(exc))
+    except Exception:
+        logger.error('V2 sensitivity calculation failed\n%s', traceback.format_exc())
+        return error('CALCULATION_FAILED', '时刻比较失败，请检查输入后重试', 500)
 
 
 if __name__ == '__main__':
