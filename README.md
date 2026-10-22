@@ -1,10 +1,13 @@
-# 铁板神数 · V2 网页与算法对照
+# 铁板神数 · 视频演算与算法对照
 
 为传统铁板神数计算提供 Python / Flask 网页接口，展示计算步骤、原始条文和不同算法版本的差异。适合研究传统文化的程序实现；程序输出不构成对现实经历或未来事件的验证。
 
-本仓库是 [xaminxan/tiebanshenshu](https://github.com/xaminxan/tiebanshenshu) 的 fork，网页使用 [Nanphy/TiebanshenshuOS_V2](https://github.com/Nanphy/TiebanshenshuOS_V2) 计算核心，并提供独立 OS 参考版对照。本 fork 的维护者为 [@yuerspring](https://github.com/yuerspring)。上游署名、代码及数据来源见 [来源与授权状态](THIRD_PARTY.md)。
+本仓库是 [xaminxan/tiebanshenshu](https://github.com/xaminxan/tiebanshenshu) 的 fork，历史版网页使用 [Nanphy/TiebanshenshuOS_V2](https://github.com/Nanphy/TiebanshenshuOS_V2) 计算核心，并提供独立 OS 参考版对照。本 fork 的维护者为 [@yuerspring](https://github.com/yuerspring)。上游署名、代码及数据来源见 [来源与授权状态](THIRD_PARTY.md)。
 
 ## 功能
+
+- 首页按泽方公开视频分步复算：太玄候选、八卦加则、干支化数，附来源时间和条文版本差异。
+- 未完成依据的步骤保持待核；十四表本命、流年和OS对照保留在 `/legacy`。
 
 - 手机与桌面浏览器可用的中文输入与结果页。
 - 本命条文、逐项计算过程和 1～108 岁流年字段。
@@ -78,10 +81,14 @@ docker run --rm -p 8000:8000 tiebanshenshu
 
 已按用户提供PDF的实际内页核对初刻／正刻规则与选定算例，修复一处会改变流年条号的“神→福”录入差异。流年默认显示原始条文，自动加数只作未核实候选；未提供逐分钟推命规则。文件名与内页标题不一致，完整范围、页码和未核项见[书页核验记录](docs/BOOK_VERIFICATION.md)。
 
-## 授权与致谢
-
-本项目由宇正伟担任主要维护者。感谢原作者 [xaminxan](https://github.com/xaminxan) 授权本项目公开维护、修改和分发。
-
 ### 新增书籍核验记录
 
 徐宇辳本与金泉本的规则、案例、版本差异及未核验范围见 [两书定点核验](docs/BOOK_COMPARISON.md)。
+
+### 视频公开步骤复核
+
+首页现在按泽方公开视频提供分步复算，原十四表界面保留在 `/legacy`。已支持太玄候选、八卦加则、干支化数和部分已核验数推演；条文底本冲突与缺失规则不会自动填默认。详见 [视频音画核验与实现边界](docs/VIDEO_VERIFICATION.md)。
+
+## 授权与致谢
+
+本项目由宇正伟担任主要维护者。感谢原作者 [xaminxan](https://github.com/xaminxan) 授权本项目公开维护、修改和分发。
