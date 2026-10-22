@@ -1,6 +1,20 @@
 # JSON API
 
-## 请求
+## 视频公开步骤
+
+首页使用 `POST /api/v1/video-chart`，与下文历史十四表接口隔离。教学示例：
+
+```json
+{"bazi":{"year":"乙巳","month":"辛巳","day":"甲申","time":"丙子"},"fortune_pillar":"壬午"}
+```
+
+也可省略`bazi`而提供`birth_date`、`birth_time`，沿用现有日期转换，结果标记`legacy_calendar_conversion_not_video_verified`。视频没有验证该历法实现。
+
+可选`confirmed_number`必须为1001–9999的整数，并同时提供`number_confirmed: true`，表示调用者根据事实核验，不是接口自动选定；`benming_gua_number`为1–13000的整数，独立表示有出处的本命卦数，不自动从考刻条号推断。`fortune_pillar`只复算未合化分支，不能据此推算大运起岁。
+
+返回`preliminary`、`pillar_articles`、`number_method`、`before_after`、`annual`与`edition_conflicts`。`source_seconds`为视频出处。未知条件返回明确状态和空候选结论；共享条文的`fact_verified`默认为false。格式错误返回HTTP400 `INVALID_INPUT`，请求限制与下文相同。规则范围见[视频核验](VIDEO_VERIFICATION.md)。
+
+## 历史十四表请求
 
 `POST /api/v1/chart` 返回 V2 排盘；`POST /api/calculate` 为兼容路径。`POST /api/v1/time-sensitivity` 比较出生小时内四段，`POST /api/v1/compare-os` 独立计算 OS 对照。四个路径使用同一请求结构：
 

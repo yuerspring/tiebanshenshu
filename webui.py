@@ -239,7 +239,53 @@ def run_chart_request(operation, failure_message):
 
 @app.get('/')
 def index():
+    return render_template('video.html')
+
+
+@app.get('/legacy')
+def legacy_index():
     return render_template('index.html')
+
+
+@app.post('/api/v1/video-chart')
+def api_video_chart():
+    """视频公开步骤；未完成的考刻和合化保持显式待核。"""
+    from tiebanshenshu.methods.video import VideoMethodCalculator
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return error('INVALID_INPUT', '请填写出生信息或四柱')
+    try:
+        if 'bazi' in data:
+            bazi = data['bazi']
+            basis = 'caller_supplied_pillars'
+        else:
+            civil = input_datetime(data, 'birth')
+            info = convert_to_bazi_info(calendar_birth_time(civil))
+            if not info:
+                raise ValueError('日期转换失败')
+            bazi = info['bazi']
+            basis = 'legacy_calendar_conversion_not_video_verified'
+        confirmed = data.get('confirmed_number')
+        if confirmed is not None and data.get('number_confirmed') is not True:
+            raise ValueError('输入基数前须确认已根据独立事实核验，不能用候选代替')
+        result = VideoMethodCalculator(init_calculator().db.FORTUNE_DUANYU_MAP).calculate(
+            bazi, confirmed, data.get('benming_gua_number'), data.get('fortune_pillar'))
+        result['input_basis'] = basis
+        result['edition_conflicts'] = [
+            {'number':9467, 'video_meaning':'兄弟四人，排行第二',
+             'corpus_sentence':init_calculator().db.FORTUNE_DUANYU_MAP.get(9467, ('',''))[0],
+             'source_seconds':[584,596],
+             'action':'版本不符，不能自动按共享条文库核验此候选'},
+            {'number':9003, 'video_meaning':'父亲甲子年出生的示例',
+             'corpus_sentence':init_calculator().db.FORTUNE_DUANYU_MAP.get(9003, ('',''))[0],
+             'source_seconds':[774,804],
+             'action':'共享条文仅给生肖，不能证明视频所要求的完整干支年'}]
+        return jsonify({'success':True, 'data':result})
+    except (ValueError, TypeError) as exc:
+        return error('INVALID_INPUT', str(exc))
+    except Exception:
+        logger.exception('Video method calculation failed')
+        return error('CALCULATION_FAILED', '视频规则计算失败', 500)
 
 
 @app.get('/api/v1/health')
