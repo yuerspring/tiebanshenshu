@@ -1427,9 +1427,11 @@ def kao_ke(liuqinjishu, known_liuqinshengxiao, db=None):
             'unassessed_conditions': len(unsupported),
             'match': matches == len(relations) and not unsupported,
         })
+    surviving = [row['k'] for row in candidates if row['conflicting_conditions'] == 0]
     matching = [row['k'] for row in candidates if row['match']]
     selected = matching[0] if len(matching) == 1 else None
-    status = ('unsupported' if unsupported else
+    status = ('no_match' if not surviving else
+              'unsupported' if unsupported else
               'unique_candidate' if selected is not None else
               'ambiguous' if matching else 'no_match')
     return selected, candidates, {
@@ -1437,7 +1439,8 @@ def kao_ke(liuqinjishu, known_liuqinshengxiao, db=None):
         'status': status, 'used_relations': relations,
         'liuqin_type': relations[0] if len(relations) == 1 else None,
         'unsupported_relations': unsupported,
-        'k_true': selected, 'candidate_ks': matching, 'match_count': len(matching),
+        'k_true': selected, 'candidate_ks': matching, 'supported_candidate_ks': surviving,
+        'match_count': len(matching),
         'note': '旧版数值候选不等于古籍验条或事实验证；无匹配不指定刻，狗/猪规则尚不支持。',
     }
 
@@ -2637,8 +2640,8 @@ def calculate_keke(birth_info, query_info=None, fortune_map=None, db=None):
     
     jiayun, xinqi1_su = get_jiayun(year_gan_zhi)
     
-    hour = birth_info.get('hour', 0)
-    minute = birth_info.get('minute', 0)
+    hour = birth_info.get('clock_hour', birth_info.get('hour', 0))
+    minute = birth_info.get('clock_minute', birth_info.get('minute', 0))
     
     k, minute_in_shichen = get_kefen(hour, minute)
     

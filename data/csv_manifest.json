@@ -90,5 +90,31 @@
       "sha256": "0dcf3cefe643992d0b12e105834bbcb6eac1e3ca71d8b3aa824929598ea7a70c",
       "bytes": 3414
     }
+  },
+  "known_table_14_9_findings": {
+    "duplicates": [
+      {
+        "key": [
+          "正刻",
+          670
+        ],
+        "lines": [
+          1240,
+          1270
+        ],
+        "values": [
+          "遁",
+          "遁"
+        ],
+        "conflicting": false
+      }
+    ],
+    "missing": [
+      [
+        "正刻",
+        700
+      ]
+    ],
+    "malformed_lines": []
   }
 }

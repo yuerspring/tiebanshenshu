@@ -51,6 +51,31 @@ def check_corpus(path):
                     'missing_count': len(missing), 'duplicate_count': len(duplicates)}
 
 
+def check_hexagram_table(path):
+    """Report missing/duplicate moment-number keys, including identical repeats."""
+    entries = {}
+    malformed = []
+    with path.open(encoding='utf-8-sig', newline='') as handle:
+        for line, row in enumerate(csv.reader(handle), 1):
+            try:
+                if len(row) != 3 or row[0] not in ('初刻', '正刻'):
+                    raise ValueError('invalid columns or moment')
+                number = int(row[1])
+                if number not in range(181, 931) or not row[2].strip():
+                    raise ValueError('invalid number or empty hexagram')
+            except (ValueError, IndexError):
+                malformed.append(line)
+                continue
+            entries.setdefault((row[0], number), []).append((line, row[2]))
+    duplicates = [{'key': list(key), 'lines': [r[0] for r in rows],
+                   'values': [r[1] for r in rows],
+                   'conflicting': len({r[1] for r in rows}) > 1}
+                  for key, rows in sorted(entries.items()) if len(rows) > 1]
+    missing = [[moment, number] for moment in ('初刻', '正刻')
+               for number in range(181, 931) if (moment, number) not in entries]
+    return {'duplicates': duplicates, 'missing': missing, 'malformed_lines': malformed}
+
+
 def audit(root=ROOT, manifest=MANIFEST):
     expected = json.loads(manifest.read_text(encoding='utf-8'))
     current = inventory(root)
@@ -60,8 +85,13 @@ def audit(root=ROOT, manifest=MANIFEST):
             errors.append(f'{name}: CSV snapshot differs; review the source before updating the manifest')
     corpus_errors, corpus = check_corpus(root / 'DB' / 'List.csv')
     errors.extend(corpus_errors)
+    table_findings = check_hexagram_table(root / 'DB' / '14-9.csv')
+    if table_findings != expected.get('known_table_14_9_findings'):
+        errors.append('14-9.csv: table defects differ from the reviewed baseline')
     return {'ok': not errors, 'errors': errors, 'corpus': corpus,
             'file_count': len(current),
+            'table_quality_ok': not any(table_findings.values()),
+            'table_14_9_findings': table_findings,
             'textual_authenticity': 'not_verified_against_a_fixed_printed_edition'}
 
 

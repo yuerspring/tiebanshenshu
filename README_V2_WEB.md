@@ -16,3 +16,10 @@ Docker：`docker build -t tiebanshenshu-v2 . && docker run -p 8000:8000 tiebansh
 ## 考刻候选状态
 
 全部已填六亲同时参与数值候选核对。`validation.status` 为 `not_provided`、`no_match`、`unsupported`、`ambiguous` 或 `unique_candidate`；只有一个共同候选且没有不支持条件时，`k_true` 才为整数，否则为空。`source_status=unverified` 表示尚未完成古籍规则核验，候选不代表命理事实已验证。每刻记录各六亲匹配、冲突和未评估条件；查到一个条文号也不会把 `text_verified` 改为真。
+
+
+## 时间基准与完整时辰对照
+
+网页保留两种时间：`input_birth` 是原钟表输入，`time_basis.calendar_birth` 是沿用 V2 晚子时规则后的历法输入。出生 23 点仍按次日 00 点同分取历法信息，但八刻用 `clock_hour`/`clock_minute` 定位，避免 23 点初刻被换日错误移为第 5 刻。未提供这些字段的底层调用仍回退到 `hour`/`minute`。
+
+`POST /api/v1/time-audit` 使用相同请求，可选 `resolution_minutes=15`（默认八样本）或 `1`（120 样本）。以原钟表出生时刻定位完整两小时，子时从前一日 23 点跨至次日 1 点，终点不含。完整窗口最后一个采样点必须不晚于求测时间。结果提供实际本命数种数、本命条文组合数和流年序列种数；`supports_minute_inference=false`，不声称分钟精度已恢复。
