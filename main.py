@@ -672,9 +672,20 @@ class TieBanCalculator:
         details['main_num'] = main_num
 
         # Step 6: 查找卦名
-        hex_name = self.db.HEXAGRAM_DETAIL_MAP.get((moment_cn, main_num), 
-                                                  self.db.HEXAGRAM_MAP.get(main_num, 
-                                                                          f"未知(刻别:{moment_cn},本命数:{main_num}未匹配)"))
+        hex_name = self.db.HEXAGRAM_DETAIL_MAP.get((moment_cn, main_num))
+        details['hexagram_source'] = {
+            'table': '14-9.csv', 'moment': moment_cn, 'main_num': main_num,
+            'found': hex_name is not None, 'fallback_used': False,
+        }
+        details['data_warnings'] = []
+        if hex_name is None:
+            # Never silently borrow the initial-quarter entry for a missing
+            # main-quarter key. The corpus must be corrected from a source.
+            hex_name = f"未知(刻别:{moment_cn},本命数:{main_num}未匹配)"
+            details['data_warnings'].append({
+                'code': 'MISSING_HEXAGRAM_ENTRY', 'table': '14-9.csv',
+                'message': f'14-9.csv 缺少{moment_cn}/{main_num}，未借用其他刻别生成本命条文。',
+            })
         details['hex_name'] = hex_name
         
         # 查找详细数据
@@ -780,10 +791,10 @@ class TieBanCalculator:
             known_shengxiao = payload.get('known_shengxiao', {})
             if known_shengxiao:
                 k_true, ba_ke_results, kao_ke_info = kao_ke(keke_result['liuqinjishu'], known_shengxiao, self.db)
-                if k_true:
-                    details['keke']['k_true'] = k_true
-                    details['keke']['ba_ke_results'] = ba_ke_results
-                    details['keke']['kao_ke_info'] = kao_ke_info
+                details['keke']['k_true'] = k_true
+                details['keke']['ba_ke_results'] = ba_ke_results
+                details['keke']['kao_ke_info'] = kao_ke_info
+                if k_true is not None:
                     details['keke']['tiaowen'] = zhidu_tiaowen(keke_result['liuqinjishu'], k_true, self.db)
         
         bazi = birth['bazi']

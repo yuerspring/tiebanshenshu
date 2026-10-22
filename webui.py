@@ -9,6 +9,7 @@ from flask import Flask, jsonify, render_template, request
 from werkzeug.exceptions import RequestEntityTooLarge
 from main import TieBanCalculator, convert_to_bazi_info
 from reference_adapter import compare_with_os
+from time_rules import calendar_birth_time, clock_coordinates, shichen_start
 
 app = Flask(__name__)
 app.config['JSON_AS_ASCII'] = False
@@ -17,6 +18,10 @@ calculator = None
 logger = logging.getLogger(__name__)
 ANIMALS = set('鼠牛虎兔龙蛇马羊猴鸡狗猪')
 KIN = {'父亲', '母亲', '兄弟', '配偶', '子女'}
+
+
+class InvalidInput(ValueError):
+    pass
 
 
 def init_calculator():
@@ -46,17 +51,17 @@ def compute_chart(data):
     query = input_datetime(data, 'query')
     if birth > query:
         raise ValueError('出生时间不能晚于求测时间')
+    civil_birth = birth
     entered_birth = birth.strftime('%Y-%m-%d %H:%M')
-    # Match V2's webui.py and main.py treatment of late 子时; keep minutes.
-    if birth.hour >= 23:
-        birth = (birth + dt.timedelta(days=1)).replace(hour=0)
+    birth = calendar_birth_time(civil_birth)
     birth_info = convert_to_bazi_info(birth)
     query_info = convert_to_bazi_info(query)
     if not birth_info or not query_info:
         raise ValueError('农历或八字转换失败，请检查日期')
+    birth_info.update(clock_hour=civil_birth.hour, clock_minute=civil_birth.minute)
     payload = {'gender': gender, 'birth_info': birth_info, 'query_info': query_info}
     supplied = data.get('known_shengxiao') or {}
-    # The V2 engine reads only the first item. Keep the selection independent of JSON key ordering.
+    # Keep display and evaluation order stable; all supplied relations participate.
     known = {key: supplied[key] for key in ('父亲', '母亲', '兄弟', '配偶', '子女') if key in supplied}
     if known:
         payload['known_shengxiao'] = known
@@ -65,9 +70,14 @@ def compute_chart(data):
     validation = {
         'provided_relations': list(known),
         'used_relation': verification.get('liuqin_type'),
+        'used_relations': verification.get('used_relations', []),
+        'status': verification.get('status', 'not_provided'),
+        'source_status': verification.get('source_status', 'unverified'),
+        'unsupported_relations': verification.get('unsupported_relations', []),
+        'candidate_ks': verification.get('candidate_ks', []),
         'matches': verification.get('match_count', 0),
         'birth_destiny_affected_by_zodiac': False,
-        'note': 'V2 仅用第一个已知六亲生肖筛选八刻；本命兄弟条文和秘数表不随生肖考刻改变。',
+        'note': '全部已填六亲参与旧版数值候选核对；规则尚未经古籍校验，本命兄弟条文与流年不随该候选改变。',
     }
     destiny = []
     table = result.get('tbl_data')
@@ -81,6 +91,9 @@ def compute_chart(data):
                                 'formula': f"{table['base']}+{table['seq']}+{offset}={number}"})
     return json.loads(json.dumps({
         'input_birth': entered_birth, 'input_query': query.strftime('%Y-%m-%d %H:%M'),
+        'time_basis': {'mode': 'civil_time', 'timezone_conversion': False,
+                       'calendar_birth': birth.strftime('%Y-%m-%d %H:%M'),
+                       **clock_coordinates(civil_birth)},
         'birth_info': birth_info, 'query_info': query_info, 'gender': gender,
         'destiny_articles': destiny, 'result': result, 'validation': validation,
     }, ensure_ascii=False, default=str))
@@ -119,7 +132,55 @@ def compare_birth_hour(data):
         'brother_articles_unchanged': unchanged('brother_articles'),
         'destiny_articles_unchanged': unchanged('destiny_articles'),
         'minimum_time_resolution_minutes': 15,
-        'note': '逐段调用原 V2 算法；候选段内的每一分钟不能由该算法区分。生肖无匹配时，默认刻数不代表考刻成功。',
+        'note': '逐段调用 V2 十四表与修订的旧规则候选核对；分钟不能用于反推出真实出生分钟。无共同候选时不指定刻。',
+    }
+
+
+def audit_birth_shichen(data):
+    """Sample all eight quarters or all 120 minutes, reporting actual changes."""
+    step = data.get('resolution_minutes', 15)
+    if type(step) is not int or step not in (1, 15):
+        raise InvalidInput('采样间隔仅支持 1 或 15 分钟')
+    birth = input_datetime(data, 'birth')
+    query = input_datetime(data, 'query')
+    start = shichen_start(birth)
+    last_sample = start + dt.timedelta(minutes=120 - step)
+    if query < last_sample:
+        raise ValueError('完整时辰对照要求求测时间不早于最后一个采样时间')
+    rows, destiny_sets, annual_sets = [], set(), set()
+    for offset in range(0, 120, step):
+        civil = start + dt.timedelta(minutes=offset)
+        candidate = dict(data, birth_date=civil.strftime('%Y-%m-%d'),
+                         birth_time=civil.strftime('%H:%M'))
+        chart = compute_chart(candidate)
+        result = chart['result']
+        articles = chart['destiny_articles']
+        destiny_sets.add(tuple((a['topic'], a['number']) for a in articles))
+        annual_sets.add(tuple((a['original_fortune'], a['corrected_fortune'])
+                              for a in result.get('liunian', [])))
+        rows.append({
+            'input_birth': chart['input_birth'],
+            'calendar_birth': chart['time_basis']['calendar_birth'],
+            'k_initial': result['keke']['k_initial'],
+            'minute_in_shichen': chart['time_basis']['minute_in_shichen'],
+            'main_num': result['main_num'],
+            'brother_article_numbers': [a['number'] for a in articles if '兄弟' in a['topic']],
+            'candidate_ks': chart['validation']['candidate_ks'],
+            'verification_status': chart['validation']['status'],
+        })
+    return {
+        'window_start': start.strftime('%Y-%m-%d %H:%M'),
+        'window_end_exclusive': (start + dt.timedelta(hours=2)).strftime('%Y-%m-%d %H:%M'),
+        'sample_interval_minutes': step, 'samples': rows,
+        'summary': {
+            'sample_count': len(rows),
+            'initial_quarters': sorted({r['k_initial'] for r in rows}),
+            'unique_main_numbers': sorted({r['main_num'] for r in rows}),
+            'unique_destiny_article_sets': len(destiny_sets),
+            'unique_annual_article_sets': len(annual_sets),
+        },
+        'supports_minute_inference': False,
+        'note': '此表实测已有规则的输入敏感性；刻序或分钟变化不代表条文必变，也不能据此推定真实出生分钟。',
     }
 
 
@@ -156,6 +217,8 @@ def run_chart_request(operation, failure_message):
         if birth > query:
             raise ValueError('出生时间不能晚于求测时间')
         return jsonify({'success': True, 'data': operation(data)})
+    except InvalidInput as exc:
+        return error('INVALID_INPUT', str(exc))
     except ValueError as exc:
         return error('INVALID_DATETIME', str(exc))
     except Exception:
@@ -188,6 +251,11 @@ def api_calculate():
 @app.post('/api/v1/time-sensitivity')
 def api_time_sensitivity():
     return run_chart_request(compare_birth_hour, '时刻比较失败，请检查输入后重试')
+
+
+@app.post('/api/v1/time-audit')
+def api_time_audit():
+    return run_chart_request(audit_birth_shichen, '时辰对照失败，请检查输入后重试')
 
 
 @app.post('/api/v1/compare-os')
