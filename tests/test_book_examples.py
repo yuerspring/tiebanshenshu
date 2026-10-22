@@ -85,7 +85,7 @@ class SuppliedBookExamples(unittest.TestCase):
                 self.calc.calculate(self.example_two())
 
     def test_api_explains_two_moments_without_claiming_minute_precision(self):
-        response = app.test_client().post('/api/v1/chart', json={
+        response = app.test_client().post('/api/v1/legacy/chart', json={
             'gender':'男','birth_date':'1984-08-15','birth_time':'12:01',
             'query_date':'2025-04-20','query_time':'10:00'})
         self.assertEqual(response.status_code, 200)

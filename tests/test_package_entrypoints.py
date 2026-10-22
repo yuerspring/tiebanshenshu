@@ -45,19 +45,19 @@ assert db.LETTER_TABLE['初刻','奇数','四','石']=='福'
                                   text=True, capture_output=True, timeout=30)
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
-    def test_module_cli_writes_report_outside_repository(self):
+    def test_module_cli_writes_video_record_outside_repository(self):
+        import json
         with tempfile.TemporaryDirectory() as folder:
-            proc = subprocess.run([sys.executable, '-m', 'tiebanshenshu'],
-                                  input='1\n1924-06-15 16:00\n2025-04-20 10:00\n',
-                                  cwd=folder, env={**os.environ, 'PYTHONPATH': str(ROOT)},
-                                  text=True, capture_output=True, timeout=30)
-            reports = list((Path(folder) / 'output').glob('*.md'))
-            self.assertEqual(proc.returncode, 0, proc.stderr)
-            self.assertEqual(len(reports), 1, proc.stdout)
-            report = reports[0].read_text()
-            self.assertIn('本命数', report)
-            self.assertIn('344', report)
-            self.assertIn('9760', report)
+            report=Path(folder)/'video.json'
+            proc=subprocess.run([sys.executable,'-m','tiebanshenshu','--pillars',
+                '乙巳','辛巳','甲申','丙子','--output',str(report)],
+                cwd=folder,env={**os.environ,'PYTHONPATH':str(ROOT)},
+                text=True,capture_output=True,timeout=30)
+            self.assertEqual(proc.returncode,0,proc.stderr)
+            data=json.loads(report.read_text())
+            self.assertEqual(data['method'],'zefang_video_o3mkGBcPkrI')
+            self.assertEqual(data['preliminary']['base_number'],9467)
+            self.assertNotIn('本命数',proc.stdout)
 
 
 if __name__ == '__main__':

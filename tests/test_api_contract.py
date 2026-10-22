@@ -8,8 +8,8 @@ from unittest.mock import patch
 from webui import app
 
 
-ENDPOINTS = ('/api/v1/chart', '/api/calculate',
-             '/api/v1/time-sensitivity', '/api/v1/compare-os', '/api/v1/time-audit')
+ENDPOINTS = ('/api/v1/legacy/chart', '/api/legacy/calculate',
+             '/api/v1/legacy/time-sensitivity', '/api/v1/legacy/compare-os', '/api/v1/legacy/time-audit')
 SAMPLE = {'gender': '男', 'birth_date': '1991-03-02', 'birth_time': '08:30',
           'query_date': '2025-04-20', 'query_time': '10:00'}
 
@@ -82,15 +82,14 @@ class ApiContract(unittest.TestCase):
                 self.assert_error(response, response.status_code, 'INVALID_INPUT')
 
     def test_health_is_unavailable_when_database_is_empty(self):
-        empty = SimpleNamespace(db=SimpleNamespace(FORTUNE_DUANYU_MAP={}))
-        with patch('webui.init_calculator', return_value=empty):
+        with patch('tiebanshenshu.methods.video_corpus.load_comparison_verses', return_value={}):
             response = self.client.get('/api/v1/health')
         self.assertEqual(response.status_code, 503)
         self.assertFalse(response.json['success'])
         self.assertFalse(response.json['database_loaded'])
 
     def test_health_hides_initialization_errors(self):
-        with patch('webui.init_calculator', side_effect=RuntimeError('internal details')):
+        with patch('tiebanshenshu.methods.video_corpus.load_comparison_verses', side_effect=RuntimeError('internal details')):
             with self.assertLogs('webui', level='ERROR'):
                 response = self.client.get('/api/v1/health')
         self.assertEqual(response.status_code, 503)
@@ -98,7 +97,7 @@ class ApiContract(unittest.TestCase):
 
     def test_successful_chart_response_is_not_cached(self):
         with patch('webui.compute_chart', return_value={'result': 'example'}):
-            response = self.client.post('/api/v1/chart', json=SAMPLE)
+            response = self.client.post('/api/v1/legacy/chart', json=SAMPLE)
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json['success'])
         self.assertEqual(response.headers['Cache-Control'], 'no-store')
