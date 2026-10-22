@@ -34,6 +34,16 @@ class KaokeCandidates(unittest.TestCase):
                 self.assertEqual(info['unsupported_relations'], ['父亲'])
                 self.assertTrue(all(row['conditions'][0]['match'] is None for row in rows))
 
+    def test_supported_conflict_takes_precedence_over_unsupported_relation(self):
+        selected, _, info = kao_ke(
+            {'父亲': 10, '母亲': 10, '子女': 10},
+            {'父亲': '鼠', '母亲': '牛', '子女': '狗'},
+        )
+        self.assertIsNone(selected)
+        self.assertEqual(info['status'], 'no_match')
+        self.assertEqual(info['supported_candidate_ks'], [])
+        self.assertEqual(info['unsupported_relations'], ['子女'])
+
     def test_existence_of_verse_does_not_claim_text_verification(self):
         database = SimpleNamespace(FORTUNE_DUANYU_MAP={})
         _, rows, _ = kao_ke({'父亲': 10}, {'父亲': '鼠'}, database)

@@ -33,7 +33,7 @@ function render(data){current=data;const r=data.result,k=r.keke||{},b=data.birth
  $('destiny').innerHTML=data.destiny_articles.length?data.destiny_articles.map(item=>`<article class="destiny-card"><div><small>${escapeHtml(item.topic)}</small><strong>条文 ${escapeHtml(item.number)}</strong></div><p>${escapeHtml(fmt(item.sentence))}</p><details><summary>计算依据</summary>${escapeHtml(item.formula)} · 对应年龄 ${escapeHtml(fmt(item.age))}</details></article>`).join(''):'<p>数据库没有匹配的本命条文。</p>';
  renderAnnual();
  const v=data.validation||{};
- const messages={not_provided:'未输入六亲生肖；未进行生肖候选核对。',no_match:'已填写的六亲条件没有共同候选；不会默认指定第一刻。',unsupported:`${(v.unsupported_relations||[]).join('、')}的生肖超出旧版十进制规则可表示范围，暂不能确定候选刻。`,ambiguous:'存在多个共同候选，不能强行锁定。',unique_candidate:`全部已填条件在旧规则下有一个共同候选：第 ${k.k_true} 刻。`};
+ const messages={not_provided:'未输入六亲生肖；未进行生肖候选核对。',no_match:'可评估的六亲条件已存在冲突，没有共同候选；不会默认指定第一刻。',unsupported:`${(v.unsupported_relations||[]).join('、')}的生肖超出旧版十进制规则可表示范围，暂不能确定候选刻。`,ambiguous:'存在多个共同候选，不能强行锁定。',unique_candidate:`全部已填条件在旧规则下有一个共同候选：第 ${k.k_true} 刻。`};
  $('verification').textContent=(messages[v.status]||'当前规则无法确定候选。')+' 该数值规则尚未完成古籍验条，本命与流年仍按十四表计算。';
  $('kin-results').innerHTML=`<div class="kin-grid">${[['钟表时间初定刻',k.k_initial],['旧规则候选刻',k.k_true],['共同候选个数',v.matches||0]].map(([n,value])=>`<div><small>${escapeHtml(n)}</small><strong>${escapeHtml(fmt(value))}</strong></div>`).join('')}</div><details class="expand"><summary>查看全部六亲条件与八刻候选</summary>${deep(k.kao_ke_info)}${deep(k.ba_ke_results)}</details>`;
  $('extended').innerHTML=Object.entries(k).map(([name,value])=>`<details class="expand"><summary>${escapeHtml(label(name))}</summary>${deep(value)}</details>`).join('');
