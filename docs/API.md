@@ -10,13 +10,13 @@
 
 也可省略`bazi`而提供`birth_date`、`birth_time`，沿用现有日期转换，结果标记`legacy_calendar_conversion_not_video_verified`。视频没有验证该历法实现。
 
-可选`confirmed_number`必须为1001–9999的整数，并同时提供`number_confirmed: true`，表示调用者根据事实核验，不是接口自动选定；`benming_gua_number`为1–13000的整数，独立表示有出处的本命卦数，不自动从考刻条号推断。`fortune_pillar`只复算未合化分支，不能据此推算大运起岁。
+可选`confirmed_number`必须为1001–9999的整数，并同时提供`number_confirmed: true`，表示调用者根据事实核验，不是接口自动选定；`basis_number`可传1001–9999的四位整数，只用于演算，无需声明现实事实已核验；化卦加则所得推命基数自动接入前后卦。`benming_gua_number`为可选的1–13000手动覆盖值；不能与考刻条号直接等同。`fortune_pillar`只复算未合化分支，不能据此推算大运起岁。
 
 返回`preliminary`、`pillar_articles`、`number_method`、`before_after`、`annual`与`edition_conflicts`。`source_seconds`为视频出处。未知条件返回明确状态和空候选结论；共享条文的`fact_verified`默认为false。格式错误返回HTTP400 `INVALID_INPUT`，请求限制与下文相同。规则范围见[视频核验](VIDEO_VERIFICATION.md)。
 
 可选 `known_parents` 示例：`{"父亲":"鼠","母亲":"牛"}`。仅接受父亲、母亲与十二生肖，返回 `parent_candidates`（固定流度基条及加10的五项候选）。这些候选不自动标记为已核验。
 
-`life_sequence` 仅在明确确认的四位基数成功生成论命基数后返回：逐加96，超过13000减12000，回到起点停止；不自动判断寿终。现有 List.csv 的所有条文都标记 `corpus_role: comparison_only`、`video_edition_verified: false`。4381的文字与视频22:30画面一致时另标记`video_text_verified: true`，并附取证时间；不扩大为整库版本确认。
+`life_sequence` 在所选四位基数成功生成论命基数后返回：逐加96，超过13000减12000，回到起点停止；不自动判断寿终。现有 List.csv 的所有条文都标记 `corpus_role: comparison_only`、`video_edition_verified: false`。4381的文字与视频22:30画面一致时另标记`video_text_verified: true`，并附取证时间；不扩大为整库版本确认。
 
 ## 历史十四表请求
 
@@ -84,3 +84,11 @@ API 响应使用 `Cache-Control: no-store`。不要把真实生日等个人资�
 ## 叠加表核对
 
 `reference_tables` 返回视频叠加的8张数表及出处时间；`source_conflicts` 明确记录流年排列文字卡与白板算例冲突。详见[视频插表核对](VIDEO_INSERT_TABLES.md)。
+
+## 连续复算示例
+
+```json
+{"bazi":{"year":"乙巳","month":"辛巳","day":"甲申","time":"丙子"},"basis_number":9003,"fortune_pillar":"壬午"}
+```
+
+`number_method.input_fact_verified=false`表示纯演算。化卦加则生成1387后自动作为前后卦的加数，输出前后卦八条。推导过程与视频已明写答案的区别见[完整示例接续](VIDEO_CHAIN_REPLAY.md)。

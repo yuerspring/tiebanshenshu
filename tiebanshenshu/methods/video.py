@@ -84,7 +84,7 @@ class VideoMethodCalculator:
         candidates = [{**self.article(base + 1327*m), 'multiplier':m}
                       for m in (0,1,2,4,6,8,10,12,14)]
         return {'sum':total, 'pairs':pairs, 'hour_divisor':divisor, 'remainder':remainder,
-                'initial_ke_candidate':initial if initial <= 8 else 1 if initial == 9 else None,
+                'initial_ke_candidate':(initial-1)%8+1, 'shichen_shift':(initial-1)//8,
                 'next_shichen_candidate':initial>8, 'status':'requires_fact_verification',
                 'true_ke':None, 'upper':upper, 'lower':lower, 'mutual':hu,
                 'thousands_rule':'(上卦先天数+6)%10', 'base_number':base,
@@ -144,7 +144,14 @@ class VideoMethodCalculator:
         upper,lower = [BA_GUA_BY_HOU_TIAN_NUM[v] for v in values]
         calculation = self.jiaze(upper,lower)
         return {'status':'calculated_from_caller_confirmed_number', 'pair_sums':sums,
-                **calculation, 'article':self.article(calculation['number'])}
+                **calculation, 'jiaze_source_seconds':calculation['source_seconds'],
+                'source_seconds':[1494,1575], 'article':self.article(calculation['number'])}
+
+    def sequence_article(self, raw_number):
+        """96条号序列按同一12000条区间轮转，保留原算术数供核对。"""
+        number=1001+(raw_number-1001)%12000
+        return {**self.article(number),'arithmetic_number':raw_number,
+                'range_adjustment':number-raw_number}
 
     def series_for_gua(self, upper, lower, benming_gua_number, use_xian_tian=True):
         """已给定卦与本命卦数时，执行视频明确公开的前加、后减96。"""
@@ -157,30 +164,40 @@ class VideoMethodCalculator:
         base = combination + benming_gua_number
         direction = 1 if use_xian_tian else -1
         return {'combination': combination, 'base': base,
-                'articles': [self.article(base + direction*96*i) for i in range(1,5)],
+                'articles': [self.sequence_article(base + direction*96*i) for i in range(1,5)],
                 'source_seconds': [1928,2012]}
 
     def before_after(self, bazi, benming_gua_number=None):
-        """32:00–33:40：前卦已演示；后卦柱配数规则不补猜。"""
-        def value(key):
-            p = bazi[key]
-            return (TIAN_GAN_TAI_XUAN[p[0]] + DI_ZHI_TAI_XUAN[p[1]]) % 8 or 8
-        upper = BA_GUA_BY_XIAN_TIAN_NUM[value('month')]
-        lower = BA_GUA_BY_XIAN_TIAN_NUM[value('year')]
-        hu = get_hu_gua(upper, lower)
-        combination = gua_to_number(upper, lower, hu['hu_shang_gua'], hu['hu_xia_gua'])['number']
-        base = combination + benming_gua_number if benming_gua_number is not None else None
-        return {
-            'before': {'upper': upper, 'lower': lower, 'mutual': hu,
-                       'combination': combination, 'benming_gua_number': benming_gua_number,
-                       'base': base,
-                       'status': 'calculated' if base is not None else 'requires_benming_gua_number',
-                       'articles': [self.article(base + 96*i) for i in range(1,5)] if base is not None else [],
-                       'source_seconds': [1928,1980]},
-            'after': {'status': 'requires_houtian_conversion_rule', 'articles': [],
-                      'note': '视频规定时上日下、逐次减96，但未完整演示后天柱配数边界；不借用其他书的减10默认法。',
-                      'source_seconds': [1980,2012]},
-        }
+        """承接31:50太玄配数说明及32–33分前/后卦文字卡。"""
+        def make(position_upper, position_lower, xian):
+            traces=[]
+            table=BA_GUA_BY_XIAN_TIAN_NUM if xian else BA_GUA_BY_HOU_TIAN_NUM
+            guas=[]
+            for position in (position_upper,position_lower):
+                pillar=bazi[position]
+                values=[TIAN_GAN_TAI_XUAN[pillar[0]],DI_ZHI_TAI_XUAN[pillar[1]]]
+                total=sum(values); reduced=total % 8 or 8
+                traces.append({'position':position,'pillar':pillar,'values':values,
+                               'sum':total,'remainder_mod8':total % 8,'trigram_number':reduced})
+                guas.append(table.get(reduced))
+            source=[1928,1980] if xian else [1980,2012]
+            if any(g is None for g in guas):
+                return {'status':'requires_middle_five_rule','articles':[],
+                        'pillar_steps':traces,'source_seconds':source,
+                        'note':'太玄除8余数为5；后天5居中，视频未给本分支的寄卦规则，不能自动换卦。'}
+            upper,lower=guas
+            hu=get_hu_gua(upper,lower)
+            combination=gua_to_number(upper,lower,hu['hu_shang_gua'],hu['hu_xia_gua'],xian)['number']
+            base=combination+benming_gua_number if benming_gua_number is not None else None
+            direction=1 if xian else -1
+            return {'upper':upper,'lower':lower,'mutual':hu,'pillar_steps':traces,
+                    'combination':combination,'benming_gua_number':benming_gua_number,
+                    'base':base,'direction':direction,'step':96,
+                    'status':'calculated' if base is not None else 'requires_benming_gua_number',
+                    'articles':[self.sequence_article(base+direction*96*i) for i in range(1,5)] if base is not None else [],
+                    'source_seconds':source,
+                    'rule_basis':'承接同段太玄除8方法，前卦查先天数表，后卦查后天数表；后卦为规则推导结果，非白板已列答案。'}
+        return {'before':make('month','year',True),'after':make('time','day',False)}
 
     def annual_example(self, bazi, fortune_pillar):
         """30:00–31:15 的未合化分支；不自动推大运起岁或合化。"""
@@ -194,14 +211,31 @@ class VideoMethodCalculator:
                 'note':'未自动判定合化；视频未完整给出全部条件，也未实现大运起岁。',
                 'source_seconds':[1741,1904]}
 
-    def calculate(self,bazi,confirmed_number=None,benming_gua_number=None,fortune_pillar=None,known_parents=None):
+    def calculate(self,bazi,confirmed_number=None,benming_gua_number=None,fortune_pillar=None,known_parents=None,basis_number=None):
         self.validate_pillars(bazi)
         if benming_gua_number is not None and (type(benming_gua_number) is not int or not 1<=benming_gua_number<=13000):
             raise ValueError('本命卦数须为1至13000的整数')
-        number_result = self.number_method(bazi,confirmed_number) if confirmed_number is not None else {'status':'requires_confirmed_number'}
+        if basis_number is not None and confirmed_number is not None and basis_number != confirmed_number:
+            raise ValueError('演算基数与已核验基数不能同时填写为不同数值')
+        supplied = confirmed_number if confirmed_number is not None else basis_number
+        number_result = self.number_method(bazi,supplied) if supplied is not None else {'status':'requires_basis_number'}
+        if supplied is not None:
+            number_result['input_number']=supplied
+            number_result['input_fact_verified']=confirmed_number is not None
+            number_result['input_role']='fact_confirmed' if confirmed_number is not None else 'arithmetic_only'
+            if confirmed_number is None and number_result['status']=='calculated_from_caller_confirmed_number':
+                number_result['status']='calculated_from_candidate_number'
+        derived = number_result.get('number')
+        if benming_gua_number is None and type(derived) is int and 1001 <= derived <= 13000:
+            benming_gua_number=derived
+            benming_basis='接续视频25:50–26:15化卦加则所得推命基数；32:30文字卡加本命卦数，按上下文衔接'
+        else:
+            benming_basis='caller_supplied' if benming_gua_number is not None else 'requires_basis_number'
+        before_after=self.before_after(bazi,benming_gua_number)
+        before_after['benming_basis']=benming_basis
         life = self.life_sequence(number_result['number']) if type(number_result.get('number')) is int and 1001 <= number_result['number'] <= 13000 else None
         return {'method':'zefang_video_o3mkGBcPkrI','source':SOURCE,
-                'scope':'公开步骤复算；不宣称完整自动考刻或预测准确率',
+                'scope':'按视频连续演算；条文对照不阻断数值推导，未核验事实不自动定真刻',
                 'reference_tables':reference_tables(),
                 'source_conflicts':[{'topic':'流年天干排列', 'overlay_order':'年月日时',
                     'worked_example_order':'月日時年','implementation':'采用口述及白板6464算例顺序',
@@ -210,6 +244,6 @@ class VideoMethodCalculator:
                 'parent_candidates':self.parent_candidates(known_parents),
                 'pillar_articles':self.pillar_articles(bazi),
                 'number_method':number_result, 'life_sequence':life,
-                'before_after':self.before_after(bazi,benming_gua_number),
+                'before_after':before_after,
                 'annual':self.annual_example(bazi,fortune_pillar) if fortune_pillar is not None else None,
-                'unresolved':['乾坤甲流度干支年份条文底本（固定生肖表已接入）','本命卦数的统一来源','合化完整条件','1327候选的越界规则（不套用96轮转规则）']}
+                'unresolved':['乾坤甲流度干支年份条文底本（固定生肖表已接入）','合化完整条件','1327候选的越界规则（不套用96轮转规则）']}
