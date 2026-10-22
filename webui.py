@@ -96,6 +96,16 @@ def compute_chart(data):
                        **clock_coordinates(civil_birth)},
         'birth_info': birth_info, 'query_info': query_info, 'gender': gender,
         'destiny_articles': destiny, 'result': result, 'validation': validation,
+        'method_basis': {
+            'method': 'fourteen_table_two_moment',
+            'source': '用户提供 PDF 内页《陈抟—铁板神数秘旨》第一章',
+            'source_pages': [12, 13, 14, 15, 16, 17, 60, 61],
+            'verification_scope': 'selected_rules_and_examples',
+            'birth_minute_used_in_main_formula': False,
+            'kin_candidates_applied_to_main_formula': False,
+            'note': '本命采用第一章初刻／正刻算法（PDF第14页）；此处不是钟表八刻的第1／第5刻。出生分钟和六亲候选不直接代入该本命公式。',
+            'annual_correction': '原始条文为默认结果；自动加2／加3只列作未核实候选。书中第45–46页先对照事实，再决定是否及几次校正。',
+        },
     }, ensure_ascii=False, default=str))
 
 

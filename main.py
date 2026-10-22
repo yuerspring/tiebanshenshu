@@ -621,8 +621,8 @@ class TieBanCalculator:
         # Step 1: 计算先天命数
         calc_month = str(m_idx := birth['lunar_month'] + (1 if birth['is_leap'] else 0))
         if int(m_idx) > 12: calc_month = "1"
-        month_val = self.db.tables['14-1'].get(calc_month, int(calc_month))
-        time_val = self.db.tables['14-2'].get(t_zhi, 0)
+        month_val = self.db.tables['14-1'][calc_month]
+        time_val = self.db.tables['14-2'][t_zhi]
         cong_num = month_val + 3 - time_val
         cong_num = ((cong_num - 1) % 12) + 1
         details['cong_calc'] = f"先天命数 = {cong_num}"
@@ -630,15 +630,15 @@ class TieBanCalculator:
 
         # Step 2: 计算五音命数
         gan_group = self.get_gan_group(y_gan)
-        tone = self.db.tables.get('14-3', {}).get(cong_num, {}).get(gan_group, "宫")
-        tone_num = self.db.tables['14-4'].get(tone, 5)
+        tone = self.db.tables['14-3'][cong_num][gan_group]
+        tone_num = self.db.tables['14-4'][tone]
         details['tone_num'] = tone_num
 
         # Step 3: 计算日命数和时运数
-        day_n = NAYIN_WUXING.get(d_day, "金")
-        day_life = self.db.tables.get('14-5', {}).get(day_n, {}).get(t_gan, 0)
-        time_n = NAYIN_WUXING.get(t_time, "金")
-        time_luck = self.db.tables['14-6'].get(time_n, 0)
+        day_n = NAYIN_WUXING[d_day]
+        day_life = self.db.tables['14-5'][day_n][t_gan]
+        time_n = NAYIN_WUXING[t_time]
+        time_luck = self.db.tables['14-6'][time_n]
         details['day_life_calc'] = f"日命:{day_life}, 时运:{time_luck}"
 
         # Step 4: 确定刻别（初刻/正刻）
@@ -771,6 +771,8 @@ class TieBanCalculator:
                     "formula": formula, 
                     "original_fortune": original_fortune,
                     "corrected_fortune": corrected_fortune,
+                    "correction_status": "unverified_candidate",
+                    "correction_applied": False,
                     # 新增断语字段
                     "original_duanyu": original_duanyu,          # 原始条文断语
                     "original_duanyu_age": original_duanyu_age,  # 原始条文对应年龄
