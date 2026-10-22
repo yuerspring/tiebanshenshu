@@ -3,12 +3,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PORT=8000
 WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt && useradd -r -u 10001 appuser
-COPY main.py keke_module.py webui.py reference_adapter.py time_rules.py ./
+COPY main.py webui.py ./
 COPY tiebanshenshu/ ./tiebanshenshu/
-COPY DB/ ./DB/
-COPY reference_os/main.py ./reference_os/main.py
-COPY reference_os/DB/ ./reference_os/DB/
-RUN for f in DB/*.csv; do name="${f##*/}"; if [ ! -f "reference_os/DB/$name" ]; then ln -s "../../$f" "reference_os/DB/$name"; fi; done
+COPY DB/List.csv ./DB/List.csv
 COPY templates/ ./templates/
 COPY static/ ./static/
 USER appuser

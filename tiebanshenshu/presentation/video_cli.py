@@ -1,4 +1,4 @@
-"""视频流程命令行；旧交互入口仅可显式调用 presentation.cli。"""
+"""视频流程命令行。"""
 import argparse
 import json
 from pathlib import Path

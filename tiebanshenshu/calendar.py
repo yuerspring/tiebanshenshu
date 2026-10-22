@@ -1,5 +1,6 @@
 """公历到农历及四柱信息的转换。"""
 import sys
+import datetime as dt
 
 # 尝试导入 cnlunar
 try:
@@ -26,3 +27,9 @@ def convert_to_bazi_info(dt_obj):
     except Exception as e:
         print(f"八字转换失败: {e}")
         return None
+
+def calendar_birth_time(civil):
+    """日期输入的23点换日约定；直接输入四柱时不进行此转换。"""
+    if civil.hour==23:
+        return (civil+dt.timedelta(days=1)).replace(hour=0)
+    return civil
