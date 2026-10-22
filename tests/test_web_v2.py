@@ -26,7 +26,10 @@ class WebParity(unittest.TestCase):
         if b.hour >= 23:
             b = (b + dt.timedelta(days=1)).replace(hour=0)
         ordered_known = {key: known[key] for key in actual['validation']['provided_relations']} if known else None
-        direct = self.calc.calculate(dict(gender=gender, birth_info=convert_to_bazi_info(b), query_info=convert_to_bazi_info(dt.datetime.strptime(query, '%Y-%m-%d %H:%M')), **({'known_shengxiao': ordered_known} if known else {})))
+        birth_info = convert_to_bazi_info(b)
+        civil = dt.datetime.strptime(birth, '%Y-%m-%d %H:%M')
+        birth_info.update(clock_hour=civil.hour, clock_minute=civil.minute)
+        direct = self.calc.calculate(dict(gender=gender, birth_info=birth_info, query_info=convert_to_bazi_info(dt.datetime.strptime(query, '%Y-%m-%d %H:%M')), **({'known_shengxiao': ordered_known} if known else {})))
         self.assertEqual(actual['result'], json.loads(json.dumps(direct, ensure_ascii=False, default=str)))
         for key in ('cong_num', 'tone_num', 'main_num', 'hex_name', 'moment_cn', 'pn_num'):
             self.assertEqual(actual['result'][key], direct[key], key)
@@ -53,7 +56,7 @@ class WebParity(unittest.TestCase):
         checked = self.check_chart('男', '1991-03-02 08:15', '2025-04-20 10:00', {'父亲': '鼠', '兄弟': '虎'})
         self.assertEqual(plain['destiny_articles'], checked['destiny_articles'])
         self.assertEqual(set(checked['validation']['provided_relations']), {'父亲', '兄弟'})
-        self.assertEqual(checked['validation']['used_relation'], checked['validation']['provided_relations'][0])
+        self.assertEqual(checked['validation']['used_relations'], checked['validation']['provided_relations'])
         self.assertFalse(checked['validation']['birth_destiny_affected_by_zodiac'])
 
     def test_validation(self):
@@ -94,6 +97,9 @@ class WebParity(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.json)
         comparison = response.json['data']
         source, calc = reference_calculator()
+        self.assertTrue(calc.db.FORTUNE_DUANYU_MAP)
+        self.assertTrue(calc.db.DESTINY_DATA)
+        self.assertTrue(calc.db.tables['14-1'])
         raw = calc.calculate({'gender': '男',
                               'birth_info': source.convert_to_bazi_info(dt.datetime(1991, 3, 2, 8, 30)),
                               'query_info': source.convert_to_bazi_info(dt.datetime(2025, 4, 20, 10))})

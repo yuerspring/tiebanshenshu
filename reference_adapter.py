@@ -10,6 +10,9 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent / 'reference_os'
+# OS-specific tables take precedence; these shared inputs are identical in the
+# archived OS and V2 versions (see README_OS_COMPARISON.md).
+SHARED_TABLES = {f'14-{n}.csv' for n in range(1, 15) if n != 11} | {'List.csv'}
 _module = None
 _calculator = None
 
@@ -23,8 +26,16 @@ def reference_calculator():
         # The archived code attempts to POST debug events to localhost. Disable
         # the transport; public chart inputs never need to leave this process.
         module.report_log = lambda *args, **kwargs: None
+
+        class ReferenceDataLoader(module.TieBanDataLoader):
+            def _read_csv_robust(self, filename, header_option=0):
+                path = ROOT / 'DB' / filename
+                if not path.exists() and filename in SHARED_TABLES:
+                    path = ROOT.parent / 'DB' / filename
+                return super()._read_csv_robust(str(path), header_option)
+
         calc = module.TieBanCalculator.__new__(module.TieBanCalculator)
-        calc.loader = module.TieBanDataLoader(db_folder=str(ROOT / 'DB'))
+        calc.loader = ReferenceDataLoader(db_folder=str(ROOT / 'DB'))
         calc.db = calc.loader
         calc.tiangan = module.TIAN_GAN
         calc.dizhi = module.DI_ZHI

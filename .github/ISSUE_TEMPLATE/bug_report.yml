@@ -1,0 +1,27 @@
+name: 错误报告
+description: 提供可复现的问题，使用虚构输入
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: 请勿上传真实生日、亲属资料、密钥或完整请求日志。安全问题请先阅读 SECURITY.md。
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤与虚构示例
+      description: 提供足以重现问题的最小步骤。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期与实际结果
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: 环境
+      description: Python 版本、提交号、源码或 Docker，以及浏览器版本。
+    validations:
+      required: true

@@ -7,3 +7,9 @@ __pycache__/
 *.whl
 *.bat
 *.md
+.venv/
+venv/
+.env
+.env.*
+*.log
+.DS_Store

@@ -1,0 +1,48 @@
+{
+  "ok": true,
+  "errors": [],
+  "corpus": {
+    "rows": 12000,
+    "unique_numbers": 12000,
+    "missing_count": 0,
+    "duplicate_count": 0
+  },
+  "file_count": 22,
+  "table_quality_ok": false,
+  "table_14_9_findings": {
+    "duplicates": [
+      {
+        "key": [
+          "正刻",
+          670
+        ],
+        "lines": [
+          1240,
+          1270
+        ],
+        "values": [
+          "遁",
+          "遁"
+        ],
+        "conflicting": false
+      }
+    ],
+    "missing": [
+      [
+        "正刻",
+        700
+      ]
+    ],
+    "malformed_lines": []
+  },
+  "textual_authenticity": "not_verified_against_a_fixed_printed_edition",
+  "reference_comparison": {
+    "verse_rows_equal": true,
+    "differences": [
+      "14-11-1.csv: table differs",
+      "14-11-2.csv: table differs",
+      "14-13.csv: table differs"
+    ],
+    "independent_book_verification": false
+  }
+}
