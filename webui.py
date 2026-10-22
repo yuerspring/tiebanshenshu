@@ -56,7 +56,7 @@ def compute_chart(data):
         raise ValueError('农历或八字转换失败，请检查日期')
     payload = {'gender': gender, 'birth_info': birth_info, 'query_info': query_info}
     supplied = data.get('known_shengxiao') or {}
-    # The V2 engine reads only the first item. Keep the selection independent of JSON key ordering.
+    # Keep display and evaluation order stable; all supplied relations participate.
     known = {key: supplied[key] for key in ('父亲', '母亲', '兄弟', '配偶', '子女') if key in supplied}
     if known:
         payload['known_shengxiao'] = known
@@ -65,9 +65,14 @@ def compute_chart(data):
     validation = {
         'provided_relations': list(known),
         'used_relation': verification.get('liuqin_type'),
+        'used_relations': verification.get('used_relations', []),
+        'status': verification.get('status', 'not_provided'),
+        'source_status': verification.get('source_status', 'unverified'),
+        'unsupported_relations': verification.get('unsupported_relations', []),
+        'candidate_ks': verification.get('candidate_ks', []),
         'matches': verification.get('match_count', 0),
         'birth_destiny_affected_by_zodiac': False,
-        'note': 'V2 仅用第一个已知六亲生肖筛选八刻；本命兄弟条文和秘数表不随生肖考刻改变。',
+        'note': '全部已填六亲参与旧版数值候选核对；规则尚未经古籍校验，本命兄弟条文与流年不随该候选改变。',
     }
     destiny = []
     table = result.get('tbl_data')
@@ -119,7 +124,7 @@ def compare_birth_hour(data):
         'brother_articles_unchanged': unchanged('brother_articles'),
         'destiny_articles_unchanged': unchanged('destiny_articles'),
         'minimum_time_resolution_minutes': 15,
-        'note': '逐段调用原 V2 算法；候选段内的每一分钟不能由该算法区分。生肖无匹配时，默认刻数不代表考刻成功。',
+        'note': '逐段调用 V2 十四表与修订的旧规则候选核对；分钟不能用于反推出真实出生分钟。无共同候选时不指定刻。',
     }
 
 

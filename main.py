@@ -780,10 +780,10 @@ class TieBanCalculator:
             known_shengxiao = payload.get('known_shengxiao', {})
             if known_shengxiao:
                 k_true, ba_ke_results, kao_ke_info = kao_ke(keke_result['liuqinjishu'], known_shengxiao, self.db)
-                if k_true:
-                    details['keke']['k_true'] = k_true
-                    details['keke']['ba_ke_results'] = ba_ke_results
-                    details['keke']['kao_ke_info'] = kao_ke_info
+                details['keke']['k_true'] = k_true
+                details['keke']['ba_ke_results'] = ba_ke_results
+                details['keke']['kao_ke_info'] = kao_ke_info
+                if k_true is not None:
                     details['keke']['tiaowen'] = zhidu_tiaowen(keke_result['liuqinjishu'], k_true, self.db)
         
         bazi = birth['bazi']

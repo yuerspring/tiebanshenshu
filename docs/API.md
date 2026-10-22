@@ -30,7 +30,7 @@
 
 ## 响应
 
-成功：HTTP 200，`{"success": true, "data": {...}}`。`chart` 的 `data` 包含输入、八字信息、`destiny_articles`、完整 `result` 和 `validation`；`result.liunian` 包含 108 个年龄结果。其余接口的字段与解释分别见 `README_V2_WEB.md`、`README_OS_COMPARISON.md`。
+成功：HTTP 200，`{"success": true, "data": {...}}`。`chart` 的 `data` 包含输入、八字信息、`destiny_articles`、完整 `result` 和 `validation`；`result.liunian` 包含 108 个年龄结果。`validation` 额外返回所有已用六亲、候选列表、候选状态和未支持条件；`source_status=unverified` 不代表已完成古籍验条。其余接口的字段与解释分别见 `README_V2_WEB.md`、`README_OS_COMPARISON.md`。
 
 失败：`{"success": false, "error": {"code": "INVALID_INPUT", "message": "…"}}`。
 

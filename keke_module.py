@@ -1379,91 +1379,66 @@ def get_kefen(hour, minute):
 
 
 def kao_ke(liuqinjishu, known_liuqinshengxiao, db=None):
-    """考刻算法：用已知六亲生肖反推刻数（完整八刻遍历验证）"""
-    liuqin_type = None
-    target_shengxiao = None
-    
-    for key, value in known_liuqinshengxiao.items():
-        if key in liuqinjishu and value:
-            liuqin_type = key
-            target_shengxiao = value
-            break
-    
-    if not liuqin_type or not target_shengxiao:
+    """Expose legacy numeric candidates without inventing a successful match.
+
+    The inherited decimal-digit rule is not verified against a fixed book.
+    In particular, it cannot represent zodiac orders 11 and 12. Those inputs
+    stay unassessed rather than being forced into a false first-quarter match.
+    """
+    relations = [name for name in ('父亲', '母亲', '兄弟', '配偶', '子女')
+                 if name in known_liuqinshengxiao and name in liuqinjishu
+                 and known_liuqinshengxiao[name] in SHENG_XIAO_TO_DIZHI]
+    if not relations:
         return None, None, None
-    
-    target_zhi = SHENG_XIAO_TO_DIZHI.get(target_shengxiao)
-    if not target_zhi:
-        return None, None, None
-    
-    target_S = DI_ZHI_ORDER.get(target_zhi, 0)
-    B = liuqinjishu[liuqin_type]
-    
-    ba_ke_results = []
-    
+
+    unsupported = [name for name in relations
+                   if DI_ZHI_ORDER[SHENG_XIAO_TO_DIZHI[known_liuqinshengxiao[name]]] > 10]
+    candidates = []
     for k in range(1, 9):
-        C_i = B + k
-        type_code = LIU_QIN_TYPE_CODES.get(liuqin_type, 0)
-        code = type_code + C_i * 10 + target_S
-        
-        tiaowen = None
-        duanyu = ""
-        match = False
-        calculated_shengxiao = ""
-        calculated_zhi = ""
-        
-        gewei = C_i % 10
-        if gewei == 0:
-            gewei = 10
-        
-        for zhi, order in DI_ZHI_ORDER.items():
-            if order == gewei:
-                calculated_zhi = zhi
-                calculated_shengxiao = DI_ZHI_TO_SHENG_XIAO.get(zhi, "")
-                break
-        
-        if calculated_shengxiao == target_shengxiao or calculated_zhi == target_zhi:
-            match = True
-        
-        if db and hasattr(db, 'FORTUNE_DUANYU_MAP') and code in db.FORTUNE_DUANYU_MAP:
-            duanyu, _ = db.FORTUNE_DUANYU_MAP[code]
-            tiaowen = duanyu
-        
-        ba_ke_results.append({
-            "k": k,
-            "C_i": C_i,
-            "gewei": gewei,
-            "calculated_zhi": calculated_zhi,
-            "calculated_shengxiao": calculated_shengxiao,
-            "code": code,
-            "tiaowen": tiaowen,
-            "duanyu": duanyu,
-            "match": match
+        evidence = []
+        for name in relations:
+            target = known_liuqinshengxiao[name]
+            target_zhi = SHENG_XIAO_TO_DIZHI[target]
+            base = liuqinjishu[name]
+            value = base + k
+            digit = value % 10 or 10
+            predicted_zhi = next((zhi for zhi, order in DI_ZHI_ORDER.items()
+                                  if order == digit), '')
+            supported = name not in unsupported
+            code = LIU_QIN_TYPE_CODES.get(name, 0) + value * 10 + DI_ZHI_ORDER[target_zhi]
+            text, age = ('', '')
+            if db is not None and hasattr(db, 'FORTUNE_DUANYU_MAP'):
+                text, age = db.FORTUNE_DUANYU_MAP.get(code, ('', ''))
+            evidence.append({
+                'relation': name, 'target_shengxiao': target, 'base': base,
+                'C_i': value, 'gewei': digit,
+                'calculated_zhi': predicted_zhi,
+                'calculated_shengxiao': DI_ZHI_TO_SHENG_XIAO.get(predicted_zhi, ''),
+                'supported': supported,
+                'match': predicted_zhi == target_zhi if supported else None,
+                'code': code, 'duanyu': text, 'age': age,
+                'text_verified': False,
+            })
+        matches = sum(item['match'] is True for item in evidence)
+        conflicts = sum(item['match'] is False for item in evidence)
+        candidates.append({
+            'k': k, 'conditions': evidence, 'matched_conditions': matches,
+            'conflicting_conditions': conflicts,
+            'unassessed_conditions': len(unsupported),
+            'match': matches == len(relations) and not unsupported,
         })
-    
-    best_k = None
-    match_count = 0
-    best_code = None
-    
-    for i, result in enumerate(ba_ke_results):
-        if result['match']:
-            match_count += 1
-            if match_count == 1:
-                best_k = result['k']
-                best_code = result['code']
-    
-    if best_k is None:
-        best_k = 1
-        ba_ke_results[0]['match'] = True
-    
-    return best_k, ba_ke_results, {
-        "liuqin_type": liuqin_type,
-        "base": B,
-        "target_shengxiao": target_shengxiao,
-        "target_S": target_S,
-        "k_true": best_k,
-        "verify_code": B + best_k,
-        "match_count": match_count
+    matching = [row['k'] for row in candidates if row['match']]
+    selected = matching[0] if len(matching) == 1 else None
+    status = ('unsupported' if unsupported else
+              'unique_candidate' if selected is not None else
+              'ambiguous' if matching else 'no_match')
+    return selected, candidates, {
+        'method': 'legacy_decimal_digit', 'source_status': 'unverified',
+        'status': status, 'used_relations': relations,
+        'liuqin_type': relations[0] if len(relations) == 1 else None,
+        'unsupported_relations': unsupported,
+        'k_true': selected, 'candidate_ks': matching, 'match_count': len(matching),
+        'note': '旧版数值候选不等于古籍验条或事实验证；无匹配不指定刻，狗/猪规则尚不支持。',
     }
 
 

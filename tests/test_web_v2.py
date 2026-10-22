@@ -53,7 +53,7 @@ class WebParity(unittest.TestCase):
         checked = self.check_chart('男', '1991-03-02 08:15', '2025-04-20 10:00', {'父亲': '鼠', '兄弟': '虎'})
         self.assertEqual(plain['destiny_articles'], checked['destiny_articles'])
         self.assertEqual(set(checked['validation']['provided_relations']), {'父亲', '兄弟'})
-        self.assertEqual(checked['validation']['used_relation'], checked['validation']['provided_relations'][0])
+        self.assertEqual(checked['validation']['used_relations'], checked['validation']['provided_relations'])
         self.assertFalse(checked['validation']['birth_destiny_affected_by_zodiac'])
 
     def test_validation(self):
