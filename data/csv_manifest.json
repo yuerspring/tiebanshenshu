@@ -23,7 +23,7 @@
       "bytes": 1002
     },
     "DB/14-13.csv": {
-      "sha256": "ce2523928d0ed28102667e9219d0dfbd9279249252342b6b0896245967446c45",
+      "sha256": "2ce935da04c92485d0ce9e100339d0d9496770e6758b96e5c028bb505333010d",
       "bytes": 3411
     },
     "DB/14-14.csv": {
@@ -116,5 +116,19 @@
       ]
     ],
     "malformed_lines": []
-  }
+  },
+  "reviewed_amendments": [
+    {
+      "file": "DB/14-13.csv",
+      "key": [
+        "初刻",
+        "奇数",
+        "四",
+        "石"
+      ],
+      "before": "神",
+      "after": "福",
+      "source": "User-supplied PDF, displayed title 陈抟—铁板神数秘旨, PDF pages 37 and 39; docs/BOOK_VERIFICATION.md"
+    }
+  ]
 }

@@ -58,3 +58,7 @@ API 响应使用 `Cache-Control: no-store`。不要把真实生日等个人资�
 ## 数据来源与缺项
 
 `result.hexagram_source` 记录表名、刻别、本命数、是否找到和是否回退。当前不允许用其他刻别填补缺项。`result.data_warnings` 出现 `MISSING_HEXAGRAM_ENTRY` 时，本命条文为空，页面会提示；不要把缺项当成预测结论。HTTP 200 表示请求已完成，不表示每个数据库字段都完整或具有古籍权威。
+
+### 书页依据和校正候选
+
+图表响应新增 `method_basis`，说明十四表初刻／正刻的规则来源、核验范围以及出生分钟不直接进入本命公式。流年行保留兼容字段 `corrected_fortune` 等，但它们仅为旧规则自动生成的候选；新增 `correction_status: unverified_candidate`、`correction_applied: false`。消费者应默认展示 `original_fortune` 和 `original_duanyu`，不得把候选标为已经事实验证。具体见 `BOOK_VERIFICATION.md`。
