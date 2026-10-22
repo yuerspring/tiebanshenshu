@@ -1,4 +1,6 @@
 """起卦、互卦、变卦及考刻取数。"""
+from .verification import select_verified_candidate
+
 from tiebanshenshu.tables.kinship import (
     BA_GUA_BY_HOU_TIAN_NUM,
     BA_GUA_BY_XIAN_TIAN_NUM,
@@ -157,7 +159,7 @@ def get_bian_gua(shang_gua, xia_gua, yao_pos):
     }
 
 def calculate_kaoke_qushu(bazi, gender, db=None, verify_condition=None):
-    """考刻取数法：完整实现文档中的算法"""
+    """先天六亲考刻候选；须由外部已知事实核验后选定"""
     basic_result = calculate_basic_gua(bazi, gender)
     shang_gua = basic_result['shang_gua']
     xia_gua = basic_result['xia_gua']
@@ -200,9 +202,6 @@ def calculate_kaoke_qushu(bazi, gender, db=None, verify_condition=None):
             duanyu, _ = db.FORTUNE_DUANYU_MAP[bian_qs_result['number']]
         
         match = False
-        if verify_condition:
-            if verify_condition(bian_qs_result['number'], duanyu):
-                match = True
         
         candidates.append({
             "yao_pos": yao_pos,
@@ -218,30 +217,29 @@ def calculate_kaoke_qushu(bazi, gender, db=None, verify_condition=None):
             "match": match
         })
     
-    best_num = basic_number
-    best_candidate = candidates[0]
-    for c in candidates:
-        if c['match']:
-            best_num = c['number']
-            best_candidate = c
-            break
-    
+    selection = select_verified_candidate(candidates, db, verify_condition)
+    best_candidate = selection['candidate']
+    best_num = best_candidate['number'] if best_candidate is not None else None
     jiajian_results = []
-    for multiplier in [2, 4, 8, 16]:
-        add_val = best_num + 48 * multiplier
-        sub_val = best_num - 48 * multiplier
-        jiajian_results.append({
-            "multiplier": multiplier,
-            "add": add_val,
-            "sub": sub_val,
-            "formula": f"基础数{'+' if add_val > best_num else '-'}48×{multiplier}={add_val if add_val > best_num else sub_val}"
-        })
-    
+    if best_num is not None:
+        for multiplier in [2, 4, 8, 16]:
+            add_val = best_num + 48 * multiplier
+            sub_val = best_num - 48 * multiplier
+            jiajian_results.append({
+                "multiplier": multiplier,
+                "add": add_val,
+                "sub": sub_val,
+                "formula": f"{best_num}±48×{multiplier} → {add_val}, {sub_val}"
+            })
+
     return {
         "basic_gua": basic_result,
         "hu_gua": hu_result,
         "basic_number": basic_number,
         "candidates": candidates,
+        "candidate_selection_status": selection["status"],
+        "matched_candidate_indices": selection["matched_indices"],
+        "verification_basis": "caller_supplied_condition",
         "best_number": best_num,
         "best_candidate": best_candidate,
         "jiajian_results": jiajian_results,
@@ -314,9 +312,6 @@ def calculate_houtian_yuncheng(bazi, db=None, verify_condition=None):
             duanyu, _ = db.FORTUNE_DUANYU_MAP[bian_qs_result['number']]
         
         match = False
-        if verify_condition:
-            if verify_condition(bian_qs_result['number'], duanyu):
-                match = True
         
         candidates.append({
             "yao_pos": yao_pos,
@@ -332,25 +327,21 @@ def calculate_houtian_yuncheng(bazi, db=None, verify_condition=None):
             "match": match
         })
     
-    best_num = basic_number
-    best_candidate = candidates[0]
-    for c in candidates:
-        if c['match']:
-            best_num = c['number']
-            best_candidate = c
-            break
-    
+    selection = select_verified_candidate(candidates, db, verify_condition)
+    best_candidate = selection['candidate']
+    best_num = best_candidate['number'] if best_candidate is not None else None
     jiajian_results = []
-    for multiplier in [2, 4, 8, 16]:
-        add_val = best_num + 48 * multiplier
-        sub_val = best_num - 48 * multiplier
-        jiajian_results.append({
-            "multiplier": multiplier,
-            "add": add_val,
-            "sub": sub_val,
-            "formula": f"基础数{'+' if add_val > best_num else '-'}48×{multiplier}={add_val if add_val > best_num else sub_val}"
-        })
-    
+    if best_num is not None:
+        for multiplier in [2, 4, 8, 16]:
+            add_val = best_num + 48 * multiplier
+            sub_val = best_num - 48 * multiplier
+            jiajian_results.append({
+                "multiplier": multiplier,
+                "add": add_val,
+                "sub": sub_val,
+                "formula": f"{best_num}±48×{multiplier} → {add_val}, {sub_val}"
+            })
+
     return {
         "day_sum": day_sum,
         "time_sum": time_sum,
@@ -360,6 +351,9 @@ def calculate_houtian_yuncheng(bazi, db=None, verify_condition=None):
         "hu_gua": hu_result,
         "basic_number": basic_number,
         "candidates": candidates,
+        "candidate_selection_status": selection["status"],
+        "matched_candidate_indices": selection["matched_indices"],
+        "verification_basis": "caller_supplied_condition",
         "best_number": best_num,
         "best_candidate": best_candidate,
         "jiajian_results": jiajian_results,

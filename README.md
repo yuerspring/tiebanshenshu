@@ -81,3 +81,7 @@ docker run --rm -p 8000:8000 tiebanshenshu
 ## 授权与致谢
 
 本项目由宇正伟担任主要维护者。感谢原作者 [xaminxan](https://github.com/xaminxan) 授权本项目公开维护、修改和分发。
+
+### 新增书籍核验记录
+
+徐宇辳本与金泉本的规则、案例、版本差异及未核验范围见 [两书定点核验](docs/BOOK_COMPARISON.md)。
