@@ -7,7 +7,8 @@ import re
 import traceback
 from flask import Flask, jsonify, render_template, request
 from werkzeug.exceptions import RequestEntityTooLarge
-from main import TieBanCalculator, convert_to_bazi_info
+from tiebanshenshu.calendar import convert_to_bazi_info
+from tiebanshenshu.engine.calculator import TieBanCalculator
 from reference_adapter import compare_with_os
 from time_rules import calendar_birth_time, clock_coordinates, shichen_start
 

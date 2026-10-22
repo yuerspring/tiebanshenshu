@@ -61,6 +61,10 @@ docker run --rm -p 8000:8000 tiebanshenshu
 
 代码、数据及参考实现的来源和许可信息见 [来源说明](THIRD_PARTY.md)。
 
+## 代码结构
+
+主程序已按数据加载、本命／流年服务、考刻领域算法、静态表和报告输出拆分为 `tiebanshenshu/` 包。根目录保留兼容入口；修改位置和启动方法见[结构与维护指南](docs/ARCHITECTURE.md)。
+
 ## 深入阅读
 
 - [算法、古籍与网站对照核查](docs/ALGORITHM_AUDIT.md)
