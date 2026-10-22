@@ -32,6 +32,8 @@ python webui.py
 python -m unittest discover -s tests -v
 ```
 
+运行 `python scripts/audit_data.py` 可核对 CSV 快照和条文完整性。审计同时列出已知的正刻 700 缺项及正刻 670 重复，不能把快照一致等同于表格已校勘无误。
+
 测试覆盖正常输入、晚子时、生肖核对、108 岁结果、四段比较、OS 对照、错误输入、请求大小和健康检查。OS 对照自动读取共享 CSV，无需建立软链接。算法一致性测试只证明程序行为一致，不能证明传统命理判断的现实准确性。
 
 ## API 示例
@@ -57,11 +59,17 @@ docker run --rm -p 8000:8000 tiebanshenshu
 
 欢迎可复现的错误报告、文档改进和带测试的修复。请先阅读 [贡献指南](CONTRIBUTING.md) 与 [安全报告说明](SECURITY.md)，勿上传真实个人或亲属出生资料。维护记录见 [CHANGELOG](CHANGELOG.md)，后续工作见 [维护计划](docs/ROADMAP.md)。
 
-授权提示：仓库当前没有覆盖全部继承代码及数据的统一许可证。维护者确认已获相关授权，但公开授权范围仍需以权利人许可文本为准；本 README 不授予额外转载、修改或分发权利。请勿将“公开可访问”等同于已取得开源许可证。
+代码、数据及参考实现的来源和许可信息见 [来源说明](THIRD_PARTY.md)。
 
 ## 深入阅读
 
+- [算法、古籍与网站对照核查](docs/ALGORITHM_AUDIT.md)
 - [API 字段与错误处理](docs/API.md)
 - [V2 网页部署与已知限制](README_V2_WEB.md)
 - [OS 来源、数据差异与行为说明](README_OS_COMPARISON.md)
 - [上游原说明归档](docs/upstream-guide.md)（保留原作者署名；历史算法描述不代表本 fork 对准确性的承诺）
+
+
+## 授权与致谢
+
+本项目由宇正伟担任主要维护者。感谢原作者 [xaminxan](https://github.com/xaminxan) 授权本项目公开维护、修改和分发。
