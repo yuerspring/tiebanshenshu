@@ -57,7 +57,7 @@ reference_os/             # 独立历史参考实现，保留原貌
 
 ## 启动与兼容
 
-原 `python main.py` 和 `gunicorn webui:app` 不变，也可 `python -m tiebanshenshu`。旧 `from main import TieBanCalculator`、`from keke_module import kao_ke` 引用的是新包中的同一个对象。
+`gunicorn webui:app` 启动方式不变；`python main.py` 与 `python -m tiebanshenshu` 现在须使用视频命令行参数（见 README）。旧 `from main import TieBanCalculator`、`from keke_module import kao_ke` 引用的是新包中的同一个对象。
 
 Docker镜像必须包含 `tiebanshenshu/`；Dockerfile已增加复制步骤。`DB` 路径相对项目资源目录定位，切换工作目录不影响加载。
 
@@ -68,3 +68,10 @@ Docker镜像必须包含 `tiebanshenshu/`；Dockerfile已增加复制步骤。`D
 ## 视频来源的方法
 
 `methods/video.py` 保存公开视频已核步骤，`methods/video_tables.py` 保存该视频的独立配数表。`webui.py` 的 `/api/v1/video-chart` 只调用此方法；首页使用 `video.html` 与 `video.js`，历史十四表页面为 `/legacy`。规则的未公开部分以状态返回，不能用其他底本的默认数补齐。
+
+## 视频作为唯一默认流程
+
+网页 `/`、`/api/v1/chart`、`/api/calculate` 与默认命令行均使用 `methods.video.VideoMethodCalculator`。
+`video_tables.py` 保存视频配数；`video_hexagrams.py` 实现互卦和组合数；`video_corpus.py` 独立读取 List.csv 作为对照；`presentation/video_cli.py` 提供命令行适配。
+视频路径不初始化 `TieBanCalculator`，不调用 `kaoke`、十四表或旧报告生成器。日期输入仅复用独立历法换算，不等于视频已验证该历法。
+旧接口迁移到 `/api/v1/legacy/...`，旧交互入口可显式调用 `tiebanshenshu.presentation.cli.main()`。

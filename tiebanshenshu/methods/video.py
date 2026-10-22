@@ -1,9 +1,9 @@
 """视频公开步骤的可复算实现，不补造未公开的流度表或合化条件。"""
 from .video_tables import (STEM_GUA, BRANCH_GUA, STEM_CODE, TRIGRAM_SUM,
-                           LINES, ANNUAL_STEM, ANNUAL_BRANCH)
-from tiebanshenshu.tables.numbers import TIAN_GAN_TAI_XUAN, DI_ZHI_TAI_XUAN
-from tiebanshenshu.tables.kinship import BA_GUA_HOU_TIAN, BA_GUA_BY_XIAN_TIAN_NUM, BA_GUA_BY_HOU_TIAN_NUM
-from tiebanshenshu.kaoke.hexagrams import get_hu_gua, gua_to_number
+    LINES, ANNUAL_STEM, ANNUAL_BRANCH, TIAN_GAN_TAI_XUAN, DI_ZHI_TAI_XUAN,
+    BA_GUA_HOU_TIAN, BA_GUA_BY_XIAN_TIAN_NUM, BA_GUA_BY_HOU_TIAN_NUM,
+    PARENT_BASES, PARENT_TABLE_SOURCE, reference_tables, VIDEO_TEXT_EVIDENCE)
+from .video_hexagrams import get_hu_gua, gua_to_number
 
 SOURCE = 'https://www.youtube.com/watch?v=o3mkGBcPkrI'
 
@@ -15,9 +15,14 @@ class VideoMethodCalculator:
 
     def article(self, number):
         entry = self.verses.get(number)
+        evidence = VIDEO_TEXT_EVIDENCE.get(number)
+        text_verified = bool(entry and evidence and entry[0].strip('。 ；;') == evidence['sentence'].strip('。 ；;'))
         return {'number': number, 'sentence': entry[0] if entry else '',
                 'age': entry[1] if entry else '', 'found': entry is not None,
-                'in_corpus': 1001 <= number <= 13000, 'fact_verified': False}
+                'in_corpus': 1001 <= number <= 13000, 'fact_verified': False,
+                'corpus_role':'comparison_only', 'video_edition_verified':False,
+                'video_text_verified':text_verified,
+                'video_text_evidence':evidence if text_verified else None}
 
     @staticmethod
     def validate_pillars(bazi):
@@ -30,8 +35,8 @@ class VideoMethodCalculator:
 
     @staticmethod
     def encode_stems(stems):
-        if not isinstance(stems, str) or len(stems) != 4 or any(s not in STEM_CODE for s in stems):
-            raise ValueError('编码须为四个已支持字符')
+        if not isinstance(stems, str) or len(stems) not in (4,5) or any(s not in STEM_CODE for s in stems):
+            raise ValueError('编码须为四或五个已支持字符')
         return int(''.join(str(STEM_CODE[s]) for s in stems))
 
     @staticmethod
@@ -85,6 +90,42 @@ class VideoMethodCalculator:
                 'thousands_rule':'(上卦先天数+6)%10', 'base_number':base,
                 'secret_candidates':candidates, 'source_seconds':[172,348,425,632],
                 'boundary_note':'超出条号13000的候选保留原算术并标记越界；视频边界口述尚不清晰，不擅自循环。'}
+
+    def parent_candidates(self, known_parents=None):
+        """生肖只能定位基条，不能自动证明干支年或真刻。"""
+        known_parents = {} if known_parents is None else known_parents
+        if not isinstance(known_parents, dict):
+            raise ValueError('父母生肖须为对象')
+        rows = []
+        for relation, animal in known_parents.items():
+            if relation not in PARENT_BASES or not isinstance(animal,str) or animal not in PARENT_BASES[relation]:
+                raise ValueError('只支持父亲、母亲及十二生肖')
+            base = PARENT_BASES[relation][animal]
+            rows.append({'relation':relation,'animal':animal,'base_number':base,
+                         'base_article':self.article(base),
+                         'year_candidates':[self.article(base+10*i) for i in range(5)],
+                         'status':'requires_full_year_verse_verification',
+                         'source_seconds':[690,900], 'table_source':PARENT_TABLE_SOURCE,
+                         'note':'依视频展示基条与逐加10；对照库存在缺失和不同条文，不能按生肖自动选定干支年份。'})
+        return rows
+
+    def life_sequence(self, base):
+        """26:20–27:10逐加96，超过13000减12000，回到起点即停止。"""
+        if type(base) is not int or not 1001 <= base <= 13000:
+            raise ValueError('论命基数须在1001至13000之间')
+        rows=[]
+        seen=set()
+        number=base
+        while number not in seen:
+            seen.add(number)
+            rows.append(self.article(number))
+            number += 96
+            if number > 13000:
+                number -= 12000
+        return {'base':base,'step':96,'wrap_above':13000,'wrap_subtract':12000,
+                'articles':rows,'stop_reason':'cycle_complete',
+                'note':'只按数字轮转，不自动识别寿终，不把寿命类条文当成真实寿命。',
+                'source_seconds':[1580,1625]}
 
     def number_method(self, bazi, confirmed_number):
         """24:50–28:40；只接受调用者已经核验的基数，不从生肖猜选。"""
@@ -153,15 +194,22 @@ class VideoMethodCalculator:
                 'note':'未自动判定合化；视频未完整给出全部条件，也未实现大运起岁。',
                 'source_seconds':[1741,1904]}
 
-    def calculate(self,bazi,confirmed_number=None,benming_gua_number=None,fortune_pillar=None):
+    def calculate(self,bazi,confirmed_number=None,benming_gua_number=None,fortune_pillar=None,known_parents=None):
         self.validate_pillars(bazi)
         if benming_gua_number is not None and (type(benming_gua_number) is not int or not 1<=benming_gua_number<=13000):
             raise ValueError('本命卦数须为1至13000的整数')
+        number_result = self.number_method(bazi,confirmed_number) if confirmed_number is not None else {'status':'requires_confirmed_number'}
+        life = self.life_sequence(number_result['number']) if type(number_result.get('number')) is int and 1001 <= number_result['number'] <= 13000 else None
         return {'method':'zefang_video_o3mkGBcPkrI','source':SOURCE,
                 'scope':'公开步骤复算；不宣称完整自动考刻或预测准确率',
+                'reference_tables':reference_tables(),
+                'source_conflicts':[{'topic':'流年天干排列', 'overlay_order':'年月日时',
+                    'worked_example_order':'月日時年','implementation':'采用口述及白板6464算例顺序',
+                    'source_seconds':[1745,1867]}],
                 'bazi':bazi,'preliminary':self.preliminary(bazi),
+                'parent_candidates':self.parent_candidates(known_parents),
                 'pillar_articles':self.pillar_articles(bazi),
-                'number_method':self.number_method(bazi,confirmed_number) if confirmed_number is not None else {'status':'requires_confirmed_number'},
+                'number_method':number_result, 'life_sequence':life,
                 'before_after':self.before_after(bazi,benming_gua_number),
                 'annual':self.annual_example(bazi,fortune_pillar) if fortune_pillar is not None else None,
-                'unresolved':['乾坤甲流度完整表与干支年份验条','本命卦数的统一来源','合化完整条件','越界循环口述']}
+                'unresolved':['乾坤甲流度干支年份条文底本（固定生肖表已接入）','本命卦数的统一来源','合化完整条件','1327候选的越界规则（不套用96轮转规则）']}

@@ -28,8 +28,8 @@ class TimeAudit(unittest.TestCase):
 
     def test_late_zi_keeps_clock_quarter_separate_from_calendar_date(self):
         with contextlib.redirect_stdout(io.StringIO()):
-            late = self.client.post('/api/v1/chart', json={**SAMPLE, 'birth_time': '23:05'}).json['data']
-            early = self.client.post('/api/v1/chart', json={**SAMPLE, 'birth_date': '1984-08-16', 'birth_time': '00:05'}).json['data']
+            late = self.client.post('/api/v1/legacy/chart', json={**SAMPLE, 'birth_time': '23:05'}).json['data']
+            early = self.client.post('/api/v1/legacy/chart', json={**SAMPLE, 'birth_date': '1984-08-16', 'birth_time': '00:05'}).json['data']
         self.assertEqual(late['birth_info']['date_str'], early['birth_info']['date_str'])
         self.assertEqual(late['result']['keke']['k_initial'], 1)
         self.assertEqual(early['result']['keke']['k_initial'], 5)
@@ -37,7 +37,7 @@ class TimeAudit(unittest.TestCase):
 
     def test_full_shichen_spans_midnight_with_eight_distinct_clock_quarters(self):
         with contextlib.redirect_stdout(io.StringIO()):
-            response = self.client.post('/api/v1/time-audit', json={**SAMPLE, 'birth_time': '00:05'})
+            response = self.client.post('/api/v1/legacy/time-audit', json={**SAMPLE, 'birth_time': '00:05'})
         self.assertEqual(response.status_code, 200, response.json)
         data = response.json['data']
         self.assertEqual(data['window_start'], '1984-08-14 23:00')
@@ -48,7 +48,7 @@ class TimeAudit(unittest.TestCase):
 
     def test_minute_audit_measures_actual_invariance(self):
         with contextlib.redirect_stdout(io.StringIO()):
-            response = self.client.post('/api/v1/time-audit', json={**SAMPLE, 'resolution_minutes': 1})
+            response = self.client.post('/api/v1/legacy/time-audit', json={**SAMPLE, 'resolution_minutes': 1})
         self.assertEqual(response.status_code, 200, response.json)
         data = response.json['data']
         self.assertEqual(data['summary']['sample_count'], 120)
@@ -59,10 +59,10 @@ class TimeAudit(unittest.TestCase):
 
     def test_invalid_interval_and_future_samples_are_rejected(self):
         for interval in (True, '1', 0, 5, 120):
-            response = self.client.post('/api/v1/time-audit', json={**SAMPLE, 'resolution_minutes': interval})
+            response = self.client.post('/api/v1/legacy/time-audit', json={**SAMPLE, 'resolution_minutes': interval})
             self.assertEqual(response.status_code, 400)
             self.assertEqual(response.json['error']['code'], 'INVALID_INPUT')
-        response = self.client.post('/api/v1/time-audit', json={**SAMPLE,
+        response = self.client.post('/api/v1/legacy/time-audit', json={**SAMPLE,
             'query_date': '1984-08-15', 'query_time': '12:00'})
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json['error']['code'], 'INVALID_DATETIME')

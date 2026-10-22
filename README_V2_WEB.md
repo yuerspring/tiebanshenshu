@@ -1,8 +1,10 @@
+> 历史十四表功能说明：已退出默认计算，当前默认流程见 README 与视频迁移记录。
+
 # 铁板神数 V2 网页部署
 
 本网页将 `Nanphy/TiebanshenshuOS_V2` 的 `main.TieBanCalculator.calculate()` 封装为 JSON API，保留十四表本命/流年规则及 DB 原文；考刻候选模块已修复无匹配强选第一刻和只读首个六亲的问题。旧十进制生肖规则尚未完成古籍验条，狗/猪对应地支超出其表示范围，明确标记为不支持而不伪造候选。输入支持男/女、公历出生与求测时间，以及可选的父亲、母亲、兄弟、配偶、子女生肖考刻验证。响应完整保留 `result` 下的 108 岁流年和 V2 的全部 `keke` 扩展字段，前端可逐项展开。
 
-运行：`pip install -r requirements.txt && gunicorn -w 2 -b 0.0.0.0:8000 webui:app`。健康检查为 `GET /api/v1/health`；排盘为 `POST /api/v1/chart`，请求示例：
+运行：`pip install -r requirements.txt && gunicorn -w 2 -b 0.0.0.0:8000 webui:app`。健康检查为 `GET /api/v1/health`；排盘为 `POST /api/v1/legacy/chart`，请求示例：
 
 ```json
 {"gender":"男","birth_date":"1924-06-15","birth_time":"16:00","query_date":"2025-04-20","query_time":"10:00","known_shengxiao":{}}
@@ -22,4 +24,4 @@ Docker：`docker build -t tiebanshenshu-v2 . && docker run -p 8000:8000 tiebansh
 
 网页保留两种时间：`input_birth` 是原钟表输入，`time_basis.calendar_birth` 是沿用 V2 晚子时规则后的历法输入。出生 23 点仍按次日 00 点同分取历法信息，但八刻用 `clock_hour`/`clock_minute` 定位，避免 23 点初刻被换日错误移为第 5 刻。未提供这些字段的底层调用仍回退到 `hour`/`minute`。
 
-`POST /api/v1/time-audit` 使用相同请求，可选 `resolution_minutes=15`（默认八样本）或 `1`（120 样本）。以原钟表出生时刻定位完整两小时，子时从前一日 23 点跨至次日 1 点，终点不含。完整窗口最后一个采样点必须不晚于求测时间。结果提供实际本命数种数、本命条文组合数和流年序列种数；`supports_minute_inference=false`，不声称分钟精度已恢复。
+`POST /api/v1/legacy/time-audit` 使用相同请求，可选 `resolution_minutes=15`（默认八样本）或 `1`（120 样本）。以原钟表出生时刻定位完整两小时，子时从前一日 23 点跨至次日 1 点，终点不含。完整窗口最后一个采样点必须不晚于求测时间。结果提供实际本命数种数、本命条文组合数和流年序列种数；`supports_minute_inference=false`，不声称分钟精度已恢复。

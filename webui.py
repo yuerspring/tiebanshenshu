@@ -1,4 +1,4 @@
-"""Mobile web adapter around the original V2 calculation entrypoint."""
+"""视频演算主入口；旧十四表仅在显式历史接口保留。"""
 import datetime as dt
 import json
 import logging
@@ -247,10 +247,13 @@ def legacy_index():
     return render_template('index.html')
 
 
+@app.post('/api/v1/chart')
+@app.post('/api/calculate')
 @app.post('/api/v1/video-chart')
 def api_video_chart():
     """视频公开步骤；未完成的考刻和合化保持显式待核。"""
     from tiebanshenshu.methods.video import VideoMethodCalculator
+    from tiebanshenshu.methods.video_corpus import load_comparison_verses
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         return error('INVALID_INPUT', '请填写出生信息或四柱')
@@ -268,16 +271,17 @@ def api_video_chart():
         confirmed = data.get('confirmed_number')
         if confirmed is not None and data.get('number_confirmed') is not True:
             raise ValueError('输入基数前须确认已根据独立事实核验，不能用候选代替')
-        result = VideoMethodCalculator(init_calculator().db.FORTUNE_DUANYU_MAP).calculate(
-            bazi, confirmed, data.get('benming_gua_number'), data.get('fortune_pillar'))
+        verses = load_comparison_verses()
+        result = VideoMethodCalculator(verses).calculate(
+            bazi, confirmed, data.get('benming_gua_number'), data.get('fortune_pillar'), data.get('known_parents'))
         result['input_basis'] = basis
         result['edition_conflicts'] = [
-            {'number':9467, 'video_meaning':'兄弟四人，排行第二',
-             'corpus_sentence':init_calculator().db.FORTUNE_DUANYU_MAP.get(9467, ('',''))[0],
+            {'number':9467, 'comparison_matching_number':9466, 'video_meaning':'兄弟四人，排行第二',
+             'corpus_sentence':verses.get(9467, ('',''))[0],
              'source_seconds':[584,596],
              'action':'版本不符，不能自动按共享条文库核验此候选'},
             {'number':9003, 'video_meaning':'父亲甲子年出生的示例',
-             'corpus_sentence':init_calculator().db.FORTUNE_DUANYU_MAP.get(9003, ('',''))[0],
+             'corpus_sentence':verses.get(9003, ('',''))[0],
              'source_seconds':[774,804],
              'action':'共享条文仅给生肖，不能证明视频所要求的完整干支年'}]
         return jsonify({'success':True, 'data':result})
@@ -291,31 +295,32 @@ def api_video_chart():
 @app.get('/api/v1/health')
 def health():
     try:
-        loaded = bool(init_calculator().db.FORTUNE_DUANYU_MAP)
+        from tiebanshenshu.methods.video_corpus import load_comparison_verses
+        loaded = bool(load_comparison_verses())
     except Exception:
         logger.exception('Database readiness check failed')
         loaded = False
-    return jsonify({'success': loaded, 'engine': 'TiebanshenshuOS_V2',
+    return jsonify({'success': loaded, 'engine': 'zefang_video_o3mkGBcPkrI',
                     'database_loaded': loaded}), 200 if loaded else 503
 
 
-@app.post('/api/v1/chart')
-@app.post('/api/calculate')
+@app.post('/api/v1/legacy/chart')
+@app.post('/api/legacy/calculate')
 def api_calculate():
     return run_chart_request(compute_chart, '计算失败，请检查输入后重试')
 
 
-@app.post('/api/v1/time-sensitivity')
+@app.post('/api/v1/legacy/time-sensitivity')
 def api_time_sensitivity():
     return run_chart_request(compare_birth_hour, '时刻比较失败，请检查输入后重试')
 
 
-@app.post('/api/v1/time-audit')
+@app.post('/api/v1/legacy/time-audit')
 def api_time_audit():
     return run_chart_request(audit_birth_shichen, '时辰对照失败，请检查输入后重试')
 
 
-@app.post('/api/v1/compare-os')
+@app.post('/api/v1/legacy/compare-os')
 def api_compare_os():
     """Compare two entire engines without overwriting either source version."""
     return run_chart_request(
@@ -325,5 +330,4 @@ def api_compare_os():
 
 
 if __name__ == '__main__':
-    init_calculator()
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', '7860')), debug=False)

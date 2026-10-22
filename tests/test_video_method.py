@@ -1,6 +1,7 @@
 import contextlib
 import io
 import unittest
+from unittest.mock import patch
 from tiebanshenshu.methods.video import VideoMethodCalculator
 from webui import app, init_calculator
 
@@ -70,6 +71,46 @@ class VideoMethodTests(unittest.TestCase):
         self.assertTrue(self.calc.article(13000)['in_corpus'])
         self.assertFalse(self.calc.article(1000)['in_corpus'])
 
+    def test_one_verified_video_caption_does_not_verify_whole_corpus(self):
+        calc=VideoMethodCalculator({4381:('黄莺出谷，载迁乔木。','39'),9467:('己酉之年，宴饮鹰扬。','')})
+        self.assertTrue(calc.article(4381)['video_text_verified'])
+        self.assertFalse(calc.article(4381)['video_edition_verified'])
+        self.assertFalse(calc.article(4381)['fact_verified'])
+        self.assertFalse(calc.article(9467)['video_text_verified'])
+        self.assertFalse(VideoMethodCalculator({4381:('错误条文','')}).article(4381)['video_text_verified'])
+
+    def test_inserted_tables_are_exposed_and_caption_conflict_is_explicit(self):
+        result=self.calc.calculate(EXAMPLE)
+        tables={t['title']:t for t in result['reference_tables']}
+        self.assertEqual(len(tables),8)
+        rows={r['key']:r['value'] for r in tables['化神五行数']['rows']}
+        self.assertEqual(rows['甲己'],('土',5))
+        self.assertEqual(rows['丁壬'],('木',3))
+        conflict=result['source_conflicts'][0]
+        self.assertEqual(conflict['overlay_order'],'年月日时')
+        self.assertEqual(conflict['worked_example_order'],'月日時年')
+
+    def test_parent_tables_video_examples_and_five_digit_encoding(self):
+        rows=self.calc.parent_candidates({'父亲':'鼠','母亲':'牛'})
+        self.assertEqual([r['base_number'] for r in rows],[9003,9655])
+        self.assertEqual([a['number'] for a in rows[0]['year_candidates']],[9003,9013,9023,9033,9043])
+        self.assertEqual(self.calc.parent_candidates({'母亲':'猴'})[0]['base_number'],10005)
+        self.assertEqual(self.calc.encode_stems('甲月月月壬'),10005)
+        self.assertEqual(self.calc.encode_stems('辛支月戊'),9003)
+        self.assertFalse(rows[0]['base_article']['fact_verified'])
+        for bad in ([],{'父亲':'猫'},{'母亲':[]},{'兄弟':'牛'}):
+            with self.assertRaises(ValueError):self.calc.parent_candidates(bad)
+
+    def test_life_sequence_video_26_20_and_wrap(self):
+        seq=self.calc.life_sequence(3456)
+        numbers=[a['number'] for a in seq['articles']]
+        self.assertEqual(numbers[:3],[3456,3552,3648])
+        self.assertEqual(len(numbers),125)
+        self.assertEqual(len(numbers),len(set(numbers)))
+        self.assertEqual(self.calc.life_sequence(12960)['articles'][1]['number'],1056)
+        self.assertTrue(all(1001<=n<=13000 for n in numbers))
+
+
 
 class VideoApiTests(unittest.TestCase):
     @classmethod
@@ -104,6 +145,19 @@ class VideoApiTests(unittest.TestCase):
             r=self.client.post('/api/v1/video-chart',json=p)
             self.assertEqual(r.status_code,400,r.json)
             self.assertEqual(r.json['error']['code'],'INVALID_INPUT')
+
+    def test_primary_routes_never_initialize_old_engine(self):
+        with patch('webui.init_calculator',side_effect=AssertionError('old engine called')):
+            for path in ('/api/v1/chart','/api/calculate','/api/v1/video-chart'):
+                r=self.client.post(path,json={'bazi':EXAMPLE,'known_parents':{'父亲':'鼠'}})
+                self.assertEqual(r.status_code,200,r.json)
+                self.assertEqual(r.json['data']['method'],'zefang_video_o3mkGBcPkrI')
+                self.assertEqual(r.json['data']['parent_candidates'][0]['base_number'],9003)
+            self.assertEqual(self.client.get('/api/v1/health').status_code,200)
+
+    def test_primary_page_has_no_old_method_switch(self):
+        self.assertNotIn(b'href="/legacy"',self.client.get('/').data)
+
 
 
 if __name__=='__main__':unittest.main()

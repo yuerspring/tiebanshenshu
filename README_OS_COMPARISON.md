@@ -1,6 +1,8 @@
+> 历史十四表功能说明：已退出默认计算，当前默认流程见 README 与视频迁移记录。
+
 # TiebanshenshuOS 原版对照
 
-网站 `/api/v1/compare-os` 对同一输入分别调用当前 V2 与 `Nanphy/TiebanshenshuOS` 原始计算器。`reference_os/main.py` 来自公开仓库提交 `785dc871d523e1c4d7772946955fd30fc8ebb4bf`，只在适配层显式设置绝对数据库路径并关闭其向本机调试服务器发送数据的钩子。未更改原代码中的公式。前台显示两个独立结果；V2 仍为主排盘。
+网站 `/api/v1/legacy/compare-os` 对同一输入分别调用当前 V2 与 `Nanphy/TiebanshenshuOS` 原始计算器。`reference_os/main.py` 来自公开仓库提交 `785dc871d523e1c4d7772946955fd30fc8ebb4bf`，只在适配层显式设置绝对数据库路径并关闭其向本机调试服务器发送数据的钩子。未更改原代码中的公式。前台显示两个独立结果；V2 仅用于显式历史复核。
 
 ## CSV 差异
 
