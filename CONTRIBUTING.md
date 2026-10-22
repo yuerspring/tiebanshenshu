@@ -22,3 +22,5 @@
 - `reference_os/main.py` 是归档参考代码。适配层变化应写在 `reference_adapter.py`；替换参考版本时记录完整上游提交号和数据差异。
 
 自动化工具可以辅助实现，但维护者需要审阅实际差异与测试。不要拆分空提交、制造 issue 或编造用户量作为维护记录。
+
+新增代码请按[结构与维护指南](docs/ARCHITECTURE.md)放入对应模块；`main.py` 和 `keke_module.py` 仅保留兼容入口，不再追加算法实现。

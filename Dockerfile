@@ -4,6 +4,7 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt && useradd -r -u 10001 appuser
 COPY main.py keke_module.py webui.py reference_adapter.py time_rules.py ./
+COPY tiebanshenshu/ ./tiebanshenshu/
 COPY DB/ ./DB/
 COPY reference_os/main.py ./reference_os/main.py
 COPY reference_os/DB/ ./reference_os/DB/
