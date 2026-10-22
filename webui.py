@@ -3,13 +3,16 @@ import datetime as dt
 import json
 import logging
 import os
+import re
 import traceback
 from flask import Flask, jsonify, render_template, request
+from werkzeug.exceptions import RequestEntityTooLarge
 from main import TieBanCalculator, convert_to_bazi_info
 from reference_adapter import compare_with_os
 
 app = Flask(__name__)
 app.config['JSON_AS_ASCII'] = False
+app.config['MAX_CONTENT_LENGTH'] = 4096
 calculator = None
 logger = logging.getLogger(__name__)
 ANIMALS = set('鼠牛虎兔龙蛇马羊猴鸡狗猪')
@@ -31,6 +34,8 @@ def input_datetime(data, name):
     date_text, time_text = data.get(f'{name}_date'), data.get(f'{name}_time')
     if not isinstance(date_text, str) or not isinstance(time_text, str):
         raise ValueError('请填写完整的出生时间和求测时间')
+    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', date_text) or not re.fullmatch(r'\d{2}:\d{2}', time_text):
+        raise ValueError('日期格式应为 YYYY-MM-DD，时间格式应为 HH:MM')
     return dt.datetime.strptime(f'{date_text} {time_text}', '%Y-%m-%d %H:%M')
 
 
@@ -123,7 +128,39 @@ def response_headers(response):
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Referrer-Policy'] = 'no-referrer'
     response.headers['X-Frame-Options'] = 'DENY'
+    if request.path.startswith('/api/'):
+        response.headers['Cache-Control'] = 'no-store'
     return response
+
+
+@app.errorhandler(RequestEntityTooLarge)
+def request_too_large(exc):
+    return error('INVALID_INPUT', '输入内容过长', 413)
+
+
+def run_chart_request(operation, failure_message):
+    """Validate every calculation endpoint before calling either engine."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or data.get('gender') not in ('男', '女'):
+        return error('INVALID_INPUT', '请选择性别并填写日期时间')
+    known = data.get('known_shengxiao', {})
+    if not isinstance(known, dict) or any(
+        key not in KIN or not isinstance(value, str) or value not in ANIMALS
+        for key, value in known.items()
+    ):
+        return error('INVALID_INPUT', '考刻验证生肖填写有误')
+    try:
+        # Validate the original input before time-sensitivity replaces minutes.
+        birth = input_datetime(data, 'birth')
+        query = input_datetime(data, 'query')
+        if birth > query:
+            raise ValueError('出生时间不能晚于求测时间')
+        return jsonify({'success': True, 'data': operation(data)})
+    except ValueError as exc:
+        return error('INVALID_DATETIME', str(exc))
+    except Exception:
+        logger.error('Calculation failed\n%s', traceback.format_exc())
+        return error('CALCULATION_FAILED', failure_message, 500)
 
 
 @app.get('/')
@@ -133,67 +170,33 @@ def index():
 
 @app.get('/api/v1/health')
 def health():
-    return jsonify({'success': True, 'engine': 'TiebanshenshuOS_V2', 'database_loaded': bool(init_calculator().db.FORTUNE_DUANYU_MAP)})
+    try:
+        loaded = bool(init_calculator().db.FORTUNE_DUANYU_MAP)
+    except Exception:
+        logger.exception('Database readiness check failed')
+        loaded = False
+    return jsonify({'success': loaded, 'engine': 'TiebanshenshuOS_V2',
+                    'database_loaded': loaded}), 200 if loaded else 503
 
 
 @app.post('/api/v1/chart')
 @app.post('/api/calculate')
 def api_calculate():
-    if request.content_length and request.content_length > 4096:
-        return error('INVALID_INPUT', '输入内容过长', 413)
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict) or data.get('gender') not in ('男', '女'):
-        return error('INVALID_INPUT', '请选择性别并填写日期时间')
-    known = data.get('known_shengxiao') or {}
-    if not isinstance(known, dict) or any(k not in KIN or v not in ANIMALS for k, v in known.items()):
-        return error('INVALID_INPUT', '考刻验证生肖填写有误')
-    try:
-        return jsonify({'success': True, 'data': compute_chart(data)})
-    except ValueError as exc:
-        return error('INVALID_DATETIME', str(exc))
-    except Exception:
-        logger.error('V2 calculation failed\n%s', traceback.format_exc())
-        return error('CALCULATION_FAILED', '计算失败，请检查输入后重试', 500)
+    return run_chart_request(compute_chart, '计算失败，请检查输入后重试')
 
 
 @app.post('/api/v1/time-sensitivity')
 def api_time_sensitivity():
-    if request.content_length and request.content_length > 4096:
-        return error('INVALID_INPUT', '输入内容过长', 413)
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict) or data.get('gender') not in ('男', '女'):
-        return error('INVALID_INPUT', '请选择性别并填写日期时间')
-    known = data.get('known_shengxiao') or {}
-    if not isinstance(known, dict) or any(k not in KIN or v not in ANIMALS for k, v in known.items()):
-        return error('INVALID_INPUT', '考刻验证生肖填写有误')
-    try:
-        return jsonify({'success': True, 'data': compare_birth_hour(data)})
-    except ValueError as exc:
-        return error('INVALID_DATETIME', str(exc))
-    except Exception:
-        logger.error('V2 sensitivity calculation failed\n%s', traceback.format_exc())
-        return error('CALCULATION_FAILED', '时刻比较失败，请检查输入后重试', 500)
+    return run_chart_request(compare_birth_hour, '时刻比较失败，请检查输入后重试')
 
 
 @app.post('/api/v1/compare-os')
 def api_compare_os():
     """Compare two entire engines without overwriting either source version."""
-    if request.content_length and request.content_length > 4096:
-        return error('INVALID_INPUT', '输入内容过长', 413)
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict) or data.get('gender') not in ('男', '女'):
-        return error('INVALID_INPUT', '请选择性别并填写日期时间')
-    known = data.get('known_shengxiao') or {}
-    if not isinstance(known, dict) or any(k not in KIN or v not in ANIMALS for k, v in known.items()):
-        return error('INVALID_INPUT', '考刻验证生肖填写有误')
-    try:
-        current = compute_chart(data)
-        return jsonify({'success': True, 'data': compare_with_os(data, current)})
-    except ValueError as exc:
-        return error('INVALID_DATETIME', str(exc))
-    except Exception:
-        logger.error('OS reference comparison failed\n%s', traceback.format_exc())
-        return error('CALCULATION_FAILED', '参考版对照失败，请检查输入后重试', 500)
+    return run_chart_request(
+        lambda data: compare_with_os(data, compute_chart(data)),
+        '参考版对照失败，请检查输入后重试',
+    )
 
 
 if __name__ == '__main__':

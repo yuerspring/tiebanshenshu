@@ -94,6 +94,9 @@ class WebParity(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.json)
         comparison = response.json['data']
         source, calc = reference_calculator()
+        self.assertTrue(calc.db.FORTUNE_DUANYU_MAP)
+        self.assertTrue(calc.db.DESTINY_DATA)
+        self.assertTrue(calc.db.tables['14-1'])
         raw = calc.calculate({'gender': '男',
                               'birth_info': source.convert_to_bazi_info(dt.datetime(1991, 3, 2, 8, 30)),
                               'query_info': source.convert_to_bazi_info(dt.datetime(2025, 4, 20, 10))})
