@@ -273,7 +273,7 @@ def api_video_chart():
             raise ValueError('输入基数前须确认已根据独立事实核验，不能用候选代替')
         verses = load_comparison_verses()
         result = VideoMethodCalculator(verses).calculate(
-            bazi, confirmed, data.get('benming_gua_number'), data.get('fortune_pillar'), data.get('known_parents'))
+            bazi, confirmed, data.get('benming_gua_number'), data.get('fortune_pillar'), data.get('known_parents'), data.get('basis_number'))
         result['input_basis'] = basis
         result['edition_conflicts'] = [
             {'number':9467, 'comparison_matching_number':9466, 'video_meaning':'兄弟四人，排行第二',

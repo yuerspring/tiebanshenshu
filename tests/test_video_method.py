@@ -43,9 +43,9 @@ class VideoMethodTests(unittest.TestCase):
         self.assertEqual((r['upper'],r['lower']),('坎','震'))
         self.assertEqual(r['number'],1387) # 依公开加则规则派生，不冒充口述假设的3456。
         missing=self.calc.calculate(EXAMPLE)
-        self.assertEqual(missing['number_method']['status'],'requires_confirmed_number')
+        self.assertEqual(missing['number_method']['status'],'requires_basis_number')
         self.assertEqual(missing['before_after']['before']['articles'],[])
-        self.assertEqual(missing['before_after']['after']['status'],'requires_houtian_conversion_rule')
+        self.assertEqual(missing['before_after']['after']['status'],'requires_benming_gua_number')
 
     def test_before_series_uses_linear_96_and_separate_benming_input(self):
         r=self.calc.calculate(EXAMPLE,benming_gua_number=2000)['before_after']['before']
@@ -70,6 +70,41 @@ class VideoMethodTests(unittest.TestCase):
         self.assertEqual(self.calc.number_method(EXAMPLE,9901)['status'],'unresolved_pair_boundary')
         self.assertTrue(self.calc.article(13000)['in_corpus'])
         self.assertFalse(self.calc.article(1000)['in_corpus'])
+
+    def test_video_case_runs_without_matching_corpus_or_fact_confirmation(self):
+        result=self.calc.calculate(EXAMPLE,basis_number=9003,fortune_pillar='壬午')
+        self.assertEqual(result['number_method']['pair_sums'],[9,3])
+        self.assertEqual(result['number_method']['number'],1387)
+        self.assertFalse(result['number_method']['input_fact_verified'])
+        self.assertEqual(result['life_sequence']['articles'][1]['number'],1483)
+        before=result['before_after']['before'];after=result['before_after']['after']
+        self.assertEqual((before['combination'],before['base']),(3467,4854))
+        self.assertEqual([a['number'] for a in before['articles']],[4950,5046,5142,5238])
+        self.assertEqual((after['upper'],after['lower'],after['combination'],after['base']),('艮','艮',8831,10218))
+        self.assertEqual([a['number'] for a in after['articles']],[10122,10026,9930,9834])
+        self.assertEqual(result['annual']['number'],6476)
+        self.assertTrue(all(not a['found'] for a in before['articles']))
+
+    def test_explicit_benming_override_and_middle_five_are_local(self):
+        result=self.calc.calculate(EXAMPLE,basis_number=9003,benming_gua_number=2000)
+        self.assertEqual(result['before_after']['before']['base'],5467)
+        b=dict(EXAMPLE,time='丁亥') # 6+4=10 ->2; day丁巳=10 ->2; test center separately
+        b['time']='甲辰' #9+5=14 mod8=6
+        b['day']='甲子' #18 mod8=2
+        # 己亥=9+4=13 ->5 is the actual unresolved center, other branch still proceeds.
+        b['time']='己亥'
+        r=self.calc.calculate(b,basis_number=9003)['before_after']
+        self.assertEqual(r['after']['status'],'requires_middle_five_rule')
+        self.assertEqual(r['before']['status'],'calculated')
+
+    def test_ke_carry_and_sequence_edges_preserve_raw_arithmetic(self):
+        b=dict(year='甲子',month='乙丑',day='丙寅',time='丁亥')
+        r=self.calc.preliminary(b)
+        self.assertEqual((r['sum'],r['remainder'],r['shichen_shift'],r['initial_ke_candidate']),(58,10,1,2))
+        r=self.calc.sequence_article(13096)
+        self.assertEqual((r['arithmetic_number'],r['number'],r['range_adjustment']),(13096,1096,-12000))
+        self.assertEqual(self.calc.sequence_article(904)['number'],12904)
+        with self.assertRaises(ValueError):self.calc.calculate(EXAMPLE,confirmed_number=9003,basis_number=9655)
 
     def test_one_verified_video_caption_does_not_verify_whole_corpus(self):
         calc=VideoMethodCalculator({4381:('黄莺出谷，载迁乔木。','39'),9467:('己酉之年，宴饮鹰扬。','')})
@@ -154,6 +189,14 @@ class VideoApiTests(unittest.TestCase):
                 self.assertEqual(r.json['data']['method'],'zefang_video_o3mkGBcPkrI')
                 self.assertEqual(r.json['data']['parent_candidates'][0]['base_number'],9003)
             self.assertEqual(self.client.get('/api/v1/health').status_code,200)
+
+    def test_api_arithmetic_candidate_is_not_a_fact_claim(self):
+        r=self.client.post('/api/v1/chart',json={'bazi':EXAMPLE,'basis_number':9003})
+        self.assertEqual(r.status_code,200,r.json)
+        result=r.json['data']
+        self.assertEqual(result['number_method']['number'],1387)
+        self.assertFalse(result['number_method']['input_fact_verified'])
+        self.assertEqual(result['before_after']['after']['combination'],8831)
 
     def test_primary_page_has_no_old_method_switch(self):
         self.assertNotIn(b'href="/legacy"',self.client.get('/').data)
