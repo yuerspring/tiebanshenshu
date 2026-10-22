@@ -100,6 +100,10 @@ class VideoMethodCalculator:
         for relation, animal in known_parents.items():
             if relation not in PARENT_BASES or not isinstance(animal,str) or animal not in PARENT_BASES[relation]:
                 raise ValueError('只支持父亲、母亲及十二生肖')
+        for relation in ('父亲','母亲'):
+            if relation not in known_parents:
+                continue
+            animal=known_parents[relation]
             base = PARENT_BASES[relation][animal]
             rows.append({'relation':relation,'animal':animal,'base_number':base,
                          'base_article':self.article(base),

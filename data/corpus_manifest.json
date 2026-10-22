@@ -1,0 +1,7 @@
+{
+  "path": "DB/List.csv",
+  "sha256": "6336b9305d4c45962c8c898e41edeed7d770d7f76cf669861779663a06017f91",
+  "rows": 12000,
+  "first_number": 1001,
+  "last_number": 13000
+}

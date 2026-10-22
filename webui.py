@@ -1,333 +1,79 @@
-"""视频演算主入口；旧十四表仅在显式历史接口保留。"""
+"""只提供视频计算流程的网页服务。"""
 import datetime as dt
-import json
-import logging
 import os
 import re
-import traceback
 from flask import Flask, jsonify, render_template, request
 from werkzeug.exceptions import RequestEntityTooLarge
-from tiebanshenshu.calendar import convert_to_bazi_info
-from tiebanshenshu.engine.calculator import TieBanCalculator
-from reference_adapter import compare_with_os
-from time_rules import calendar_birth_time, clock_coordinates, shichen_start
+from tiebanshenshu.calendar import convert_to_bazi_info, calendar_birth_time
+from tiebanshenshu.methods.video import VideoMethodCalculator
+from tiebanshenshu.methods.video_corpus import load_comparison_verses
 
-app = Flask(__name__)
-app.config['JSON_AS_ASCII'] = False
-app.config['MAX_CONTENT_LENGTH'] = 4096
-calculator = None
-logger = logging.getLogger(__name__)
-ANIMALS = set('鼠牛虎兔龙蛇马羊猴鸡狗猪')
-KIN = {'父亲', '母亲', '兄弟', '配偶', '子女'}
+app=Flask(__name__)
+app.config.update(MAX_CONTENT_LENGTH=4096)
 
-
-class InvalidInput(ValueError):
-    pass
-
-
-def init_calculator():
-    global calculator
-    if calculator is None:
-        calculator = TieBanCalculator()
-    return calculator
-
-
-def error(code, message, status=400):
-    return jsonify({'success': False, 'error': {'code': code, 'message': message}}), status
-
-
-def input_datetime(data, name):
-    date_text, time_text = data.get(f'{name}_date'), data.get(f'{name}_time')
-    if not isinstance(date_text, str) or not isinstance(time_text, str):
-        raise ValueError('请填写完整的出生时间和求测时间')
-    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', date_text) or not re.fullmatch(r'\d{2}:\d{2}', time_text):
-        raise ValueError('日期格式应为 YYYY-MM-DD，时间格式应为 HH:MM')
-    return dt.datetime.strptime(f'{date_text} {time_text}', '%Y-%m-%d %H:%M')
-
-
-def compute_chart(data):
-    """Use V2 TieBanCalculator.calculate exactly once for a request."""
-    gender = data['gender']
-    birth = input_datetime(data, 'birth')
-    query = input_datetime(data, 'query')
-    if birth > query:
-        raise ValueError('出生时间不能晚于求测时间')
-    civil_birth = birth
-    entered_birth = birth.strftime('%Y-%m-%d %H:%M')
-    birth = calendar_birth_time(civil_birth)
-    birth_info = convert_to_bazi_info(birth)
-    query_info = convert_to_bazi_info(query)
-    if not birth_info or not query_info:
-        raise ValueError('农历或八字转换失败，请检查日期')
-    birth_info.update(clock_hour=civil_birth.hour, clock_minute=civil_birth.minute)
-    payload = {'gender': gender, 'birth_info': birth_info, 'query_info': query_info}
-    supplied = data.get('known_shengxiao') or {}
-    # Keep display and evaluation order stable; all supplied relations participate.
-    known = {key: supplied[key] for key in ('父亲', '母亲', '兄弟', '配偶', '子女') if key in supplied}
-    if known:
-        payload['known_shengxiao'] = known
-    result = init_calculator().calculate(payload)
-    verification = result.get('keke', {}).get('kao_ke_info') or {}
-    validation = {
-        'provided_relations': list(known),
-        'used_relation': verification.get('liuqin_type'),
-        'used_relations': verification.get('used_relations', []),
-        'status': verification.get('status', 'not_provided'),
-        'source_status': verification.get('source_status', 'unverified'),
-        'unsupported_relations': verification.get('unsupported_relations', []),
-        'candidate_ks': verification.get('candidate_ks', []),
-        'matches': verification.get('match_count', 0),
-        'birth_destiny_affected_by_zodiac': False,
-        'note': '全部已填六亲参与旧版数值候选核对；规则尚未经古籍校验，本命兄弟条文与流年不随该候选改变。',
-    }
-    destiny = []
-    table = result.get('tbl_data')
-    if table:
-        for topic, offsets in table['offsets'].items():
-            for offset in offsets:
-                number = table['base'] + table['seq'] + offset
-                sentence, age = init_calculator().get_fortune_duanyu(number)
-                destiny.append({'topic': topic, 'number': number, 'sentence': sentence, 'age': age,
-                                'base': table['base'], 'sequence': table['seq'], 'offset': offset,
-                                'formula': f"{table['base']}+{table['seq']}+{offset}={number}"})
-    return json.loads(json.dumps({
-        'input_birth': entered_birth, 'input_query': query.strftime('%Y-%m-%d %H:%M'),
-        'time_basis': {'mode': 'civil_time', 'timezone_conversion': False,
-                       'calendar_birth': birth.strftime('%Y-%m-%d %H:%M'),
-                       **clock_coordinates(civil_birth)},
-        'birth_info': birth_info, 'query_info': query_info, 'gender': gender,
-        'destiny_articles': destiny, 'result': result, 'validation': validation,
-        'method_basis': {
-            'method': 'fourteen_table_two_moment',
-            'source': '用户提供 PDF 内页《陈抟—铁板神数秘旨》第一章',
-            'source_pages': [12, 13, 14, 15, 16, 17, 60, 61],
-            'verification_scope': 'selected_rules_and_examples',
-            'birth_minute_used_in_main_formula': False,
-            'kin_candidates_applied_to_main_formula': False,
-            'note': '本命采用第一章初刻／正刻算法（PDF第14页）；此处不是钟表八刻的第1／第5刻。出生分钟和六亲候选不直接代入该本命公式。',
-            'annual_correction': '原始条文为默认结果；自动加2／加3只列作未核实候选。书中第45–46页先对照事实，再决定是否及几次校正。',
-        },
-    }, ensure_ascii=False, default=str))
-
-
-def compare_birth_hour(data):
-    """Run the unchanged V2 engine at each quarter of the entered birth hour.
-
-    This is a sensitivity check, not an inverse calculator or a claim of
-    minute-level precision. Never select a 'correct' birth minute from a tie.
-    """
-    birth = input_datetime(data, 'birth')
-    candidates = []
-    for minute in (0, 15, 30, 45):
-        candidate = dict(data, birth_time=f'{birth.hour:02d}:{minute:02d}')
-        chart = compute_chart(candidate)
-        result = chart['result']
-        keke = result.get('keke') or {}
-        brother = [article for article in chart['destiny_articles'] if '兄弟' in article['topic']]
-        candidates.append({
-            'time_range': f'{birth.hour:02d}:{minute:02d}–{birth.hour:02d}:{minute+14:02d}',
-            'main_num': result.get('main_num'),
-            'moment_cn': result.get('moment_cn'),
-            'hex_name': result.get('hex_name'),
-            'k_initial': keke.get('k_initial'),
-            'k_true': keke.get('k_true'),
-            'zodiac_matches': chart['validation']['matches'],
-            'brother_articles': brother,
-            'destiny_articles': chart['destiny_articles'],
-        })
-    def unchanged(field):
-        return all(row[field] == candidates[0][field] for row in candidates[1:])
-    return {
-        'hour': f'{birth.hour:02d}:00–{birth.hour:02d}:59',
-        'candidates': candidates,
-        'brother_articles_unchanged': unchanged('brother_articles'),
-        'destiny_articles_unchanged': unchanged('destiny_articles'),
-        'minimum_time_resolution_minutes': 15,
-        'note': '逐段调用 V2 十四表与修订的旧规则候选核对；分钟不能用于反推出真实出生分钟。无共同候选时不指定刻。',
-    }
-
-
-def audit_birth_shichen(data):
-    """Sample all eight quarters or all 120 minutes, reporting actual changes."""
-    step = data.get('resolution_minutes', 15)
-    if type(step) is not int or step not in (1, 15):
-        raise InvalidInput('采样间隔仅支持 1 或 15 分钟')
-    birth = input_datetime(data, 'birth')
-    query = input_datetime(data, 'query')
-    start = shichen_start(birth)
-    last_sample = start + dt.timedelta(minutes=120 - step)
-    if query < last_sample:
-        raise ValueError('完整时辰对照要求求测时间不早于最后一个采样时间')
-    rows, destiny_sets, annual_sets = [], set(), set()
-    for offset in range(0, 120, step):
-        civil = start + dt.timedelta(minutes=offset)
-        candidate = dict(data, birth_date=civil.strftime('%Y-%m-%d'),
-                         birth_time=civil.strftime('%H:%M'))
-        chart = compute_chart(candidate)
-        result = chart['result']
-        articles = chart['destiny_articles']
-        destiny_sets.add(tuple((a['topic'], a['number']) for a in articles))
-        annual_sets.add(tuple((a['original_fortune'], a['corrected_fortune'])
-                              for a in result.get('liunian', [])))
-        rows.append({
-            'input_birth': chart['input_birth'],
-            'calendar_birth': chart['time_basis']['calendar_birth'],
-            'k_initial': result['keke']['k_initial'],
-            'minute_in_shichen': chart['time_basis']['minute_in_shichen'],
-            'main_num': result['main_num'],
-            'brother_article_numbers': [a['number'] for a in articles if '兄弟' in a['topic']],
-            'candidate_ks': chart['validation']['candidate_ks'],
-            'verification_status': chart['validation']['status'],
-        })
-    return {
-        'window_start': start.strftime('%Y-%m-%d %H:%M'),
-        'window_end_exclusive': (start + dt.timedelta(hours=2)).strftime('%Y-%m-%d %H:%M'),
-        'sample_interval_minutes': step, 'samples': rows,
-        'summary': {
-            'sample_count': len(rows),
-            'initial_quarters': sorted({r['k_initial'] for r in rows}),
-            'unique_main_numbers': sorted({r['main_num'] for r in rows}),
-            'unique_destiny_article_sets': len(destiny_sets),
-            'unique_annual_article_sets': len(annual_sets),
-        },
-        'supports_minute_inference': False,
-        'note': '此表实测已有规则的输入敏感性；刻序或分钟变化不代表条文必变，也不能据此推定真实出生分钟。',
-    }
-
+def error(message,status=400):
+    return jsonify(success=False,error={'code':'INVALID_INPUT' if status<500 else 'CALCULATION_FAILED','message':message}),status
 
 @app.after_request
 def response_headers(response):
-    response.headers['X-Content-Type-Options'] = 'nosniff'
-    response.headers['Referrer-Policy'] = 'no-referrer'
-    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-Content-Type-Options']='nosniff'
+    response.headers['Referrer-Policy']='no-referrer'
+    response.headers['X-Frame-Options']='DENY'
+    response.headers['X-App-Edition']='video-only'
     if request.path.startswith('/api/'):
-        response.headers['Cache-Control'] = 'no-store'
+        response.headers['Cache-Control']='no-store'
     return response
 
-
 @app.errorhandler(RequestEntityTooLarge)
-def request_too_large(exc):
-    return error('INVALID_INPUT', '输入内容过长', 413)
-
-
-def run_chart_request(operation, failure_message):
-    """Validate every calculation endpoint before calling either engine."""
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict) or data.get('gender') not in ('男', '女'):
-        return error('INVALID_INPUT', '请选择性别并填写日期时间')
-    known = data.get('known_shengxiao', {})
-    if not isinstance(known, dict) or any(
-        key not in KIN or not isinstance(value, str) or value not in ANIMALS
-        for key, value in known.items()
-    ):
-        return error('INVALID_INPUT', '考刻验证生肖填写有误')
-    try:
-        # Validate the original input before time-sensitivity replaces minutes.
-        birth = input_datetime(data, 'birth')
-        query = input_datetime(data, 'query')
-        if birth > query:
-            raise ValueError('出生时间不能晚于求测时间')
-        return jsonify({'success': True, 'data': operation(data)})
-    except InvalidInput as exc:
-        return error('INVALID_INPUT', str(exc))
-    except ValueError as exc:
-        return error('INVALID_DATETIME', str(exc))
-    except Exception:
-        logger.error('Calculation failed\n%s', traceback.format_exc())
-        return error('CALCULATION_FAILED', failure_message, 500)
-
+def too_large(exc):
+    return error('输入内容过长',413)
 
 @app.get('/')
 def index():
     return render_template('video.html')
 
-
-@app.get('/legacy')
-def legacy_index():
-    return render_template('index.html')
-
-
-@app.post('/api/v1/chart')
-@app.post('/api/calculate')
-@app.post('/api/v1/video-chart')
-def api_video_chart():
-    """视频公开步骤；未完成的考刻和合化保持显式待核。"""
-    from tiebanshenshu.methods.video import VideoMethodCalculator
-    from tiebanshenshu.methods.video_corpus import load_comparison_verses
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return error('INVALID_INPUT', '请填写出生信息或四柱')
-    try:
-        if 'bazi' in data:
-            bazi = data['bazi']
-            basis = 'caller_supplied_pillars'
-        else:
-            civil = input_datetime(data, 'birth')
-            info = convert_to_bazi_info(calendar_birth_time(civil))
-            if not info:
-                raise ValueError('日期转换失败')
-            bazi = info['bazi']
-            basis = 'legacy_calendar_conversion_not_video_verified'
-        confirmed = data.get('confirmed_number')
-        if confirmed is not None and data.get('number_confirmed') is not True:
-            raise ValueError('输入基数前须确认已根据独立事实核验，不能用候选代替')
-        verses = load_comparison_verses()
-        result = VideoMethodCalculator(verses).calculate(
-            bazi, confirmed, data.get('benming_gua_number'), data.get('fortune_pillar'), data.get('known_parents'), data.get('basis_number'))
-        result['input_basis'] = basis
-        result['edition_conflicts'] = [
-            {'number':9467, 'comparison_matching_number':9466, 'video_meaning':'兄弟四人，排行第二',
-             'corpus_sentence':verses.get(9467, ('',''))[0],
-             'source_seconds':[584,596],
-             'action':'版本不符，不能自动按共享条文库核验此候选'},
-            {'number':9003, 'video_meaning':'父亲甲子年出生的示例',
-             'corpus_sentence':verses.get(9003, ('',''))[0],
-             'source_seconds':[774,804],
-             'action':'共享条文仅给生肖，不能证明视频所要求的完整干支年'}]
-        return jsonify({'success':True, 'data':result})
-    except (ValueError, TypeError) as exc:
-        return error('INVALID_INPUT', str(exc))
-    except Exception:
-        logger.exception('Video method calculation failed')
-        return error('CALCULATION_FAILED', '视频规则计算失败', 500)
-
-
 @app.get('/api/v1/health')
 def health():
     try:
-        from tiebanshenshu.methods.video_corpus import load_comparison_verses
-        loaded = bool(load_comparison_verses())
+        loaded=bool(load_comparison_verses())
     except Exception:
-        logger.exception('Database readiness check failed')
-        loaded = False
-    return jsonify({'success': loaded, 'engine': 'zefang_video_o3mkGBcPkrI',
-                    'database_loaded': loaded}), 200 if loaded else 503
+        app.logger.exception('Verse loading failed')
+        loaded=False
+    return jsonify(success=loaded,edition='video-only',engine='zefang_video_o3mkGBcPkrI',
+                   revision=os.environ.get('RENDER_GIT_COMMIT','local'),database_loaded=loaded),200 if loaded else 503
 
+@app.post('/api/v1/video-chart')
+def calculate():
+    data=request.get_json(silent=True)
+    if not isinstance(data,dict):
+        return error('请填写出生日期或四柱')
+    allowed={'bazi','birth_date','birth_time','basis_number','fortune_pillar','known_parents'}
+    if set(data)-allowed:
+        return error('仅支持视频演算输入')
+    try:
+        if 'bazi' in data:
+            bazi=data['bazi'];basis='caller_supplied_pillars'
+        else:
+            date,time=data.get('birth_date'),data.get('birth_time')
+            if not isinstance(date,str) or not isinstance(time,str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}',date) or not re.fullmatch(r'\d{2}:\d{2}',time):
+                raise ValueError('请填写有效日期和时刻')
+            civil=dt.datetime.strptime(f'{date} {time}','%Y-%m-%d %H:%M')
+            if not 1900<=civil.year<=2099:
+                raise ValueError('出生年份须在1900至2099之间；其他年份请直接填写四柱')
+            info=convert_to_bazi_info(calendar_birth_time(civil))
+            if not info:
+                raise ValueError('日期转换失败，请直接填写四柱')
+            bazi=info['bazi'];basis='civil_calendar_conversion'
+        result=VideoMethodCalculator(load_comparison_verses()).calculate(
+            bazi,basis_number=data.get('basis_number'),fortune_pillar=data.get('fortune_pillar'),
+            known_parents=data.get('known_parents'))
+        result['input_basis']=basis
+        return jsonify(success=True,data=result)
+    except (ValueError,TypeError) as exc:
+        return error(str(exc))
+    except Exception:
+        app.logger.exception('Video calculation failed')
+        return error('演算失败，请稍后重试',500)
 
-@app.post('/api/v1/legacy/chart')
-@app.post('/api/legacy/calculate')
-def api_calculate():
-    return run_chart_request(compute_chart, '计算失败，请检查输入后重试')
-
-
-@app.post('/api/v1/legacy/time-sensitivity')
-def api_time_sensitivity():
-    return run_chart_request(compare_birth_hour, '时刻比较失败，请检查输入后重试')
-
-
-@app.post('/api/v1/legacy/time-audit')
-def api_time_audit():
-    return run_chart_request(audit_birth_shichen, '时辰对照失败，请检查输入后重试')
-
-
-@app.post('/api/v1/legacy/compare-os')
-def api_compare_os():
-    """Compare two entire engines without overwriting either source version."""
-    return run_chart_request(
-        lambda data: compare_with_os(data, compute_chart(data)),
-        '参考版对照失败，请检查输入后重试',
-    )
-
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', '7860')), debug=False)
+if __name__=='__main__':
+    app.run(host='0.0.0.0',port=int(os.environ.get('PORT','7860')),debug=False)

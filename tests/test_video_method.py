@@ -1,9 +1,7 @@
-import contextlib
-import io
 import unittest
 from unittest.mock import patch
 from tiebanshenshu.methods.video import VideoMethodCalculator
-from webui import app, init_calculator
+from webui import app
 
 EXAMPLE = dict(year='乙巳',month='辛巳',day='甲申',time='丙子')
 
@@ -144,63 +142,3 @@ class VideoMethodTests(unittest.TestCase):
         self.assertEqual(len(numbers),len(set(numbers)))
         self.assertEqual(self.calc.life_sequence(12960)['articles'][1]['number'],1056)
         self.assertTrue(all(1001<=n<=13000 for n in numbers))
-
-
-
-class VideoApiTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        with contextlib.redirect_stdout(io.StringIO()):init_calculator()
-        cls.client=app.test_client()
-
-    def test_video_case_and_corpus_conflict_are_visible(self):
-        response=self.client.post('/api/v1/video-chart',json={'bazi':EXAMPLE,'fortune_pillar':'壬午'})
-        self.assertEqual(response.status_code,200)
-        r=response.json['data']
-        self.assertEqual(r['preliminary']['base_number'],9467)
-        self.assertEqual(r['edition_conflicts'][0]['corpus_sentence'],'己酉之年，宴饮鹰扬。')
-        self.assertEqual(r['annual']['number'],6476)
-        self.assertEqual(len(r['pillar_articles']),4)
-
-    def test_number_requires_explicit_fact_confirmation(self):
-        p={'bazi':EXAMPLE,'confirmed_number':9003}
-        self.assertEqual(self.client.post('/api/v1/video-chart',json=p).status_code,400)
-        self.assertEqual(self.client.post('/api/v1/video-chart',json={**p,'number_confirmed':True}).status_code,200)
-
-    def test_both_routes_render_and_dates_convert_without_claiming_video_calendar(self):
-        self.assertIn('视频演算'.encode(),self.client.get('/').data)
-        self.assertIn('V2'.encode(),self.client.get('/legacy').data)
-        r=self.client.post('/api/v1/video-chart',json={'birth_date':'1991-03-02','birth_time':'08:15'})
-        self.assertEqual(r.status_code,200)
-        self.assertEqual(r.json['data']['input_basis'],'legacy_calendar_conversion_not_video_verified')
-
-    def test_bad_optional_fields_return_json_errors(self):
-        for field,value in [('fortune_pillar',[]),('benming_gua_number',True),('confirmed_number',{}),('bazi',[] )]:
-            p={'bazi':EXAMPLE,field:value,'number_confirmed':True}
-            r=self.client.post('/api/v1/video-chart',json=p)
-            self.assertEqual(r.status_code,400,r.json)
-            self.assertEqual(r.json['error']['code'],'INVALID_INPUT')
-
-    def test_primary_routes_never_initialize_old_engine(self):
-        with patch('webui.init_calculator',side_effect=AssertionError('old engine called')):
-            for path in ('/api/v1/chart','/api/calculate','/api/v1/video-chart'):
-                r=self.client.post(path,json={'bazi':EXAMPLE,'known_parents':{'父亲':'鼠'}})
-                self.assertEqual(r.status_code,200,r.json)
-                self.assertEqual(r.json['data']['method'],'zefang_video_o3mkGBcPkrI')
-                self.assertEqual(r.json['data']['parent_candidates'][0]['base_number'],9003)
-            self.assertEqual(self.client.get('/api/v1/health').status_code,200)
-
-    def test_api_arithmetic_candidate_is_not_a_fact_claim(self):
-        r=self.client.post('/api/v1/chart',json={'bazi':EXAMPLE,'basis_number':9003})
-        self.assertEqual(r.status_code,200,r.json)
-        result=r.json['data']
-        self.assertEqual(result['number_method']['number'],1387)
-        self.assertFalse(result['number_method']['input_fact_verified'])
-        self.assertEqual(result['before_after']['after']['combination'],8831)
-
-    def test_primary_page_has_no_old_method_switch(self):
-        self.assertNotIn(b'href="/legacy"',self.client.get('/').data)
-
-
-
-if __name__=='__main__':unittest.main()

@@ -11,3 +11,5 @@ htmlcov/
 output/
 *.log
 .DS_Store
+
+.venv*/
