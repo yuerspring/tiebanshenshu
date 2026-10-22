@@ -26,7 +26,10 @@ class WebParity(unittest.TestCase):
         if b.hour >= 23:
             b = (b + dt.timedelta(days=1)).replace(hour=0)
         ordered_known = {key: known[key] for key in actual['validation']['provided_relations']} if known else None
-        direct = self.calc.calculate(dict(gender=gender, birth_info=convert_to_bazi_info(b), query_info=convert_to_bazi_info(dt.datetime.strptime(query, '%Y-%m-%d %H:%M')), **({'known_shengxiao': ordered_known} if known else {})))
+        birth_info = convert_to_bazi_info(b)
+        civil = dt.datetime.strptime(birth, '%Y-%m-%d %H:%M')
+        birth_info.update(clock_hour=civil.hour, clock_minute=civil.minute)
+        direct = self.calc.calculate(dict(gender=gender, birth_info=birth_info, query_info=convert_to_bazi_info(dt.datetime.strptime(query, '%Y-%m-%d %H:%M')), **({'known_shengxiao': ordered_known} if known else {})))
         self.assertEqual(actual['result'], json.loads(json.dumps(direct, ensure_ascii=False, default=str)))
         for key in ('cong_num', 'tone_num', 'main_num', 'hex_name', 'moment_cn', 'pn_num'):
             self.assertEqual(actual['result'][key], direct[key], key)

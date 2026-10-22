@@ -37,6 +37,7 @@ function render(data){current=data;const r=data.result,k=r.keke||{},b=data.birth
  $('kin-results').innerHTML=`<div class="kin-grid">${[['钟表时间初定刻',k.k_initial],['旧规则候选刻',k.k_true],['共同候选个数',v.matches||0]].map(([n,value])=>`<div><small>${escapeHtml(n)}</small><strong>${escapeHtml(fmt(value))}</strong></div>`).join('')}</div><details class="expand"><summary>查看全部六亲条件与八刻候选</summary>${deep(k.kao_ke_info)}${deep(k.ba_ke_results)}</details>`;
  $('extended').innerHTML=Object.entries(k).map(([name,value])=>`<details class="expand"><summary>${escapeHtml(label(name))}</summary>${deep(value)}</details>`).join('');
  $('raw-fields').innerHTML=Object.entries(r).filter(([name])=>!['keke','liunian'].includes(name)).map(([name,value])=>`<details class="expand"><summary>${escapeHtml(label(name))}</summary>${deep(value)}</details>`).join('');
+ $('audit-results').innerHTML='';$('audit-error').hidden=true;
  $('time-comparison').innerHTML='';$('compare-error').hidden=true;$('os-comparison').innerHTML='';$('os-error').hidden=true;
  $('report').hidden=false;$('report').scrollIntoView({behavior:'smooth',block:'start'});
 }
@@ -44,3 +45,24 @@ $('chart-form').onsubmit=async e=>{e.preventDefault();$('error').hidden=true;con
 $('compare-time').onclick=async()=>{if(!lastInput)return;const button=$('compare-time');button.disabled=true;button.textContent='正在比较四个时段…';$('compare-error').hidden=true;try{const response=await fetch('/api/v1/time-sensitivity',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(lastInput)});const payload=await response.json();if(!response.ok||!payload.success)throw Error(payload.error?.message||'比较失败');renderTimeComparison(payload.data)}catch(err){$('compare-error').textContent=err.message;$('compare-error').hidden=false}finally{button.disabled=false;button.textContent='比较本小时四个时段'}};
 $('compare-os').onclick=async()=>{if(!lastInput)return;const button=$('compare-os');button.disabled=true;button.textContent='正在运行参考版…';$('os-error').hidden=true;try{const response=await fetch('/api/v1/compare-os',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(lastInput)});const payload=await response.json();if(!response.ok||!payload.success)throw Error(payload.error?.message||'参考版对照失败');renderOsComparison(payload.data)}catch(err){$('os-error').textContent=err.message;$('os-error').hidden=false}finally{button.disabled=false;button.textContent='运行 OS 参考版对照'}};
 $('copy').onclick=async()=>{if(!current)return;const text=[`${current.gender}命 · ${current.input_birth}`,`八字 ${['year','month','day','time'].map(key=>current.birth_info.bazi[key]).join(' ')}`,`本命数 ${current.result.main_num} · ${current.result.hex_name}`,...current.destiny_articles.map(a=>`${a.topic} ${a.number} ${a.sentence}`)].join('\n');try{await navigator.clipboard.writeText(text);$('copy').textContent='已复制';setTimeout(()=>$('copy').textContent='复制结果',1700)}catch{$('copy').textContent='复制失败'}};
+
+function renderTimeAudit(data){
+ const summary=data.summary;
+ const rows=data.samples.map(row=>`<tr><td>${escapeHtml(row.input_birth)}</td><td>${escapeHtml(row.k_initial)}</td><td>${escapeHtml(row.main_num)}</td><td>${escapeHtml(row.brother_article_numbers.join('、')||'未匹配')}</td></tr>`).join('');
+ $('audit-results').innerHTML=`<p class="verification">${escapeHtml(data.window_start)} 至 ${escapeHtml(data.window_end_exclusive)}（不含终点），共 ${summary.sample_count} 个样本。本命数有 ${summary.unique_main_numbers.length} 种，本命条文组合有 ${summary.unique_destiny_article_sets} 种，流年条文序列有 ${summary.unique_annual_article_sets} 种。</p><p class="hint">${escapeHtml(data.note)}</p><details class="expand"><summary>查看 ${summary.sample_count} 个采样结果</summary><div class="audit-table"><table><thead><tr><th>钟表时间</th><th>初定刻</th><th>本命数</th><th>兄弟条文号</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
+}
+for(const [id,step] of [['audit-shichen',15],['audit-minutes',1]]){
+ $(id).onclick=async()=>{
+  if(!lastInput)return;
+  const input=lastInput;
+  $('audit-shichen').disabled=true;$('audit-minutes').disabled=true;$('audit-error').hidden=true;
+  try{
+   const response=await fetch('/api/v1/time-audit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...input,resolution_minutes:step})});
+   const payload=await response.json();
+   if(input!==lastInput)return;
+   if(!response.ok||!payload.success)throw Error(payload.error?.message||'时辰对照失败');
+   renderTimeAudit(payload.data);
+  }catch(err){if(input===lastInput){$('audit-error').textContent=err.message;$('audit-error').hidden=false;}}
+  finally{$('audit-shichen').disabled=false;$('audit-minutes').disabled=false;}
+ };
+}

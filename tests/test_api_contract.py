@@ -9,7 +9,7 @@ from webui import app
 
 
 ENDPOINTS = ('/api/v1/chart', '/api/calculate',
-             '/api/v1/time-sensitivity', '/api/v1/compare-os')
+             '/api/v1/time-sensitivity', '/api/v1/compare-os', '/api/v1/time-audit')
 SAMPLE = {'gender': '男', 'birth_date': '1991-03-02', 'birth_time': '08:30',
           'query_date': '2025-04-20', 'query_time': '10:00'}
 

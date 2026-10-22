@@ -2637,8 +2637,8 @@ def calculate_keke(birth_info, query_info=None, fortune_map=None, db=None):
     
     jiayun, xinqi1_su = get_jiayun(year_gan_zhi)
     
-    hour = birth_info.get('hour', 0)
-    minute = birth_info.get('minute', 0)
+    hour = birth_info.get('clock_hour', birth_info.get('hour', 0))
+    minute = birth_info.get('clock_minute', birth_info.get('minute', 0))
     
     k, minute_in_shichen = get_kefen(hour, minute)
     
