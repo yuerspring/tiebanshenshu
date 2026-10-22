@@ -53,3 +53,8 @@ API 响应使用 `Cache-Control: no-store`。不要把真实生日等个人资�
 `POST /api/v1/time-audit`：同排盘请求加可选 `resolution_minutes`（只能为整数 1 或 15，不接受布尔值）。返回 `window_start`、`window_end_exclusive`、`samples` 和 `summary`。默认 8 样本；逐分钟模式为 120 样本，计算量更大，部署者应设置访问频率和并发限制。采样窗口必须不晚于求测时间。该工具展示既有规则的敏感性，不推定哪个出生分钟真实。
 
 排盘响应 `time_basis` 保留历法换日时间与钟表初定刻坐标，`timezone_conversion=false` 表示未执行时区/太阳时换算。23:05 与次日 00:05 可能沿用相同历法输入，但原钟表八刻分别为 1、5；不要把这两个概念混为一谈。
+
+
+## 数据来源与缺项
+
+`result.hexagram_source` 记录表名、刻别、本命数、是否找到和是否回退。当前不允许用其他刻别填补缺项。`result.data_warnings` 出现 `MISSING_HEXAGRAM_ENTRY` 时，本命条文为空，页面会提示；不要把缺项当成预测结论。HTTP 200 表示请求已完成，不表示每个数据库字段都完整或具有古籍权威。

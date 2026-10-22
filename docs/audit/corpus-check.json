@@ -8,6 +8,33 @@
     "duplicate_count": 0
   },
   "file_count": 22,
+  "table_quality_ok": false,
+  "table_14_9_findings": {
+    "duplicates": [
+      {
+        "key": [
+          "正刻",
+          670
+        ],
+        "lines": [
+          1240,
+          1270
+        ],
+        "values": [
+          "遁",
+          "遁"
+        ],
+        "conflicting": false
+      }
+    ],
+    "missing": [
+      [
+        "正刻",
+        700
+      ]
+    ],
+    "malformed_lines": []
+  },
   "textual_authenticity": "not_verified_against_a_fixed_printed_edition",
   "reference_comparison": {
     "verse_rows_equal": true,
